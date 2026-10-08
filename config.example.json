@@ -1,0 +1,15 @@
+{
+    "strategy": {
+        "asset": "MNQ",
+        "contracts_per_account": 10,
+        "allowed_hours": [9, 10, 11, 14, 15]
+    },
+    "accounts": [
+        {
+            "account_name": "Topstep_Eval_1",
+            "api_key": "YOUR_API_KEY_HERE",
+            "api_secret": "YOUR_API_SECRET_HERE",
+            "is_active": true
+        }
+    ]
+}
