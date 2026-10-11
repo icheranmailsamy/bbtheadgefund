@@ -1,0 +1,304 @@
+#region Using declarations
+using System;
+using System.Collections.Generic;
+using System.ComponentModel;
+using System.ComponentModel.DataAnnotations;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+using System.Windows;
+using System.Windows.Input;
+using System.Windows.Media;
+using System.Xml.Serialization;
+using NinjaTrader.Cbi;
+using NinjaTrader.Gui;
+using NinjaTrader.Gui.Chart;
+using NinjaTrader.Gui.SuperDom;
+using NinjaTrader.Gui.Tools;
+using NinjaTrader.Data;
+using NinjaTrader.NinjaScript;
+using NinjaTrader.Core.FloatingPoint;
+using NinjaTrader.NinjaScript.Indicators;
+using NinjaTrader.NinjaScript.DrawingTools;
+#endregion
+
+namespace NinjaTrader.NinjaScript.Strategies
+{
+    public class PureRTHEquilibriumStrategy : Strategy
+    {
+        private double dayHigh;
+        private double dayLow;
+        private int bullState;
+        private double bullAnchor;
+        private double bullExtreme;
+        private double bullLowestW1;
+
+        private int bearState;
+        private double bearAnchor;
+        private double bearExtreme;
+        private double bearHighestW1;
+
+        private string activeBias;
+        private double trade50Level;
+        private double entryPrice;
+        private double currentSl;
+        private double currentTp;
+        private double lowestInTrade;
+        private double highestInTrade;
+        private bool slMoved;
+
+        [NinjaScriptProperty]
+        [Range(1, 100)]
+        [Display(Name="Quantity (Contracts)", Description="Number of micro contracts to trade", Order=1, GroupName="Parameters")]
+        public int Contracts { get; set; }
+
+        [NinjaScriptProperty]
+        [Range(1, 10)]
+        [Display(Name="Slippage Ticks", Description="Slippage allowance in ticks", Order=2, GroupName="Parameters")]
+        public int SlippageTicks { get; set; }
+
+        protected override void OnStateChange()
+        {
+            if (State == State.SetDefaults)
+            {
+                Description                                 = @"Pure RTH 50% Equilibrium Institutional Execution Engine";
+                Name                                        = "PureRTHEquilibriumStrategy";
+                Calculate                                   = Calculate.OnBarClose;
+                EntriesPerDirection                         = 1;
+                EntryHandling                               = EntryHandling.AllEntries;
+                IsExitOnSessionCloseStrategy                = true;
+                ExitOnSessionCloseSeconds                   = 60;
+                IsFillLimitOnTouch                          = false;
+                MaximumBarsLookBack                         = MaximumBarsLookBack.TwoHundredFiftySix;
+                OrderFillResolution                         = OrderFillResolution.Standard;
+                Slippage                                    = 2;
+                StartBehavior                               = StartBehavior.WaitUntilFlat;
+                TimeInForce                                 = TimeInForce.Gtc;
+                TraceOrders                                 = false;
+                RealtimeErrorHandling                       = RealtimeErrorHandling.StopCancelClose;
+                StopTargetHandling                          = StopTargetHandling.PerEntryExecution;
+                BarsRequiredToTrade                         = 20;
+
+                Contracts                                   = 3;
+                SlippageTicks                               = 2;
+            }
+            else if (State == State.Configure)
+            {
+                // Clear any overnight state
+                ClearState();
+            }
+        }
+
+        private void ClearState()
+        {
+            dayHigh = 0;
+            dayLow = double.MaxValue;
+            bullState = 0;
+            bearState = 0;
+            activeBias = null;
+            slMoved = false;
+        }
+
+        protected override void OnBarUpdate()
+        {
+            if (CurrentBar < BarsRequiredToTrade)
+                return;
+
+            int time = ToTime(Time[0]);
+
+            // 1. HARD FLATTEN AT 15:59 EST (Zero Overnight Holding)
+            if (time >= 155900)
+            {
+                if (Position.MarketPosition != MarketPosition.Flat)
+                {
+                    if (Position.MarketPosition == MarketPosition.Long)
+                        ExitLong("Flatten_EOD");
+                    else if (Position.MarketPosition == MarketPosition.Short)
+                        ExitShort("Flatten_EOD");
+                }
+                ClearState();
+                return;
+            }
+
+            // 2. PURE RTH FRESH START AT 09:30 AM EST
+            if (time == 093000)
+            {
+                dayHigh = High[0];
+                dayLow = Low[0];
+                bullState = 1;
+                bullAnchor = dayLow;
+                bullExtreme = dayLow;
+                bearState = 1;
+                bearAnchor = dayHigh;
+                bearExtreme = dayHigh;
+                activeBias = null;
+                slMoved = false;
+                return;
+            }
+
+            // Skip everything outside RTH (09:30 - 15:55 EST)
+            if (time < 093000 || time > 155500)
+                return;
+
+            // Update session extremes
+            if (Low[0] < dayLow)
+            {
+                dayLow = Low[0];
+                bullState = 1;
+                bullAnchor = dayLow;
+                bullExtreme = dayLow;
+                if (activeBias == "BULL") activeBias = null;
+            }
+
+            if (High[0] > dayHigh)
+            {
+                dayHigh = High[0];
+                bearState = 1;
+                bearAnchor = dayHigh;
+                bearExtreme = dayHigh;
+                if (activeBias == "BEAR") activeBias = null;
+            }
+
+            double minRange = Close[0] * 0.0004;
+            double tick = TickSize;
+
+            // Bullish State Machine
+            if (bullState == 1)
+            {
+                if (High[0] > bullExtreme) bullExtreme = High[0];
+                double bull50 = bullExtreme - 0.50 * (bullExtreme - bullAnchor);
+                if ((bullExtreme - bullAnchor) >= minRange && Low[0] <= bull50)
+                {
+                    bullState = 2;
+                    bullLowestW1 = Low[0];
+                }
+            }
+            else if (bullState == 2)
+            {
+                bullLowestW1 = Math.Min(bullLowestW1, Low[0]);
+                if (Low[0] < bullAnchor)
+                {
+                    bullState = 0;
+                    if (activeBias == "BULL") activeBias = null;
+                }
+                else if (High[0] >= bullExtreme)
+                {
+                    bullState = 3;
+                    bullAnchor = bullLowestW1;
+                    bullExtreme = High[0];
+                    activeBias = "BULL"; // Recency Override
+                }
+            }
+            else if (bullState == 3)
+            {
+                if (Low[0] < bullAnchor)
+                {
+                    bullState = 0;
+                    if (activeBias == "BULL") activeBias = null;
+                }
+                else
+                {
+                    if (High[0] > bullExtreme) bullExtreme = High[0];
+                    double bull50 = bullExtreme - 0.50 * (bullExtreme - bullAnchor);
+
+                    // Entry Condition
+                    if (Position.MarketPosition == MarketPosition.Flat && activeBias == "BULL" && (bullExtreme - bullAnchor) >= minRange && Low[0] <= bull50)
+                    {
+                        trade50Level = bull50;
+                        entryPrice = bull50 + (SlippageTicks * tick);
+                        currentSl = bullAnchor - (Close[0] * 0.00005);
+                        currentTp = bullExtreme;
+                        lowestInTrade = Low[0];
+                        slMoved = false;
+
+                        EnterLong(Contracts, "50_Equilibrium_Long");
+                        SetStopLoss("50_Equilibrium_Long", CalculationMode.Price, currentSl, false);
+                        SetProfitTarget("50_Equilibrium_Long", CalculationMode.Price, currentTp);
+                    }
+                }
+            }
+
+            // Bearish State Machine
+            if (bearState == 1)
+            {
+                if (Low[0] < bearExtreme) bearExtreme = Low[0];
+                double bear50 = bearExtreme + 0.50 * (bearAnchor - bearExtreme);
+                if ((bearAnchor - bearExtreme) >= minRange && High[0] >= bear50)
+                {
+                    bearState = 2;
+                    bearHighestW1 = High[0];
+                }
+            }
+            else if (bearState == 2)
+            {
+                bearHighestW1 = Math.Max(bearHighestW1, High[0]);
+                if (High[0] > bearAnchor)
+                {
+                    bearState = 0;
+                    if (activeBias == "BEAR") activeBias = null;
+                }
+                else if (Low[0] <= bearExtreme)
+                {
+                    bearState = 3;
+                    bearAnchor = bearHighestW1;
+                    bearExtreme = Low[0];
+                    activeBias = "BEAR"; // Recency Override
+                }
+            }
+            else if (bearState == 3)
+            {
+                if (High[0] > bearAnchor)
+                {
+                    bearState = 0;
+                    if (activeBias == "BEAR") activeBias = null;
+                }
+                else
+                {
+                    if (Low[0] < bearExtreme) bearExtreme = Low[0];
+                    double bear50 = bearExtreme + 0.50 * (bearAnchor - bearExtreme);
+
+                    // Entry Condition
+                    if (Position.MarketPosition == MarketPosition.Flat && activeBias == "BEAR" && (bearAnchor - bearExtreme) >= minRange && High[0] >= bear50)
+                    {
+                        trade50Level = bear50;
+                        entryPrice = bear50 - (SlippageTicks * tick);
+                        currentSl = bearAnchor + (Close[0] * 0.00005);
+                        currentTp = bearExtreme;
+                        highestInTrade = High[0];
+                        slMoved = false;
+
+                        EnterShort(Contracts, "50_Equilibrium_Short");
+                        SetStopLoss("50_Equilibrium_Short", CalculationMode.Price, currentSl, false);
+                        SetProfitTarget("50_Equilibrium_Short", CalculationMode.Price, currentTp);
+                    }
+                }
+            }
+
+            // Dynamic Risk Reduction Trailing Stop
+            if (Position.MarketPosition == MarketPosition.Long)
+            {
+                lowestInTrade = Math.Min(lowestInTrade, Low[0]);
+                double triggerPrice = trade50Level + 0.50 * (currentTp - trade50Level);
+
+                if (High[0] >= triggerPrice && !slMoved)
+                {
+                    currentSl = lowestInTrade - (Close[0] * 0.00005);
+                    SetStopLoss("50_Equilibrium_Long", CalculationMode.Price, currentSl, false);
+                    slMoved = true;
+                }
+            }
+            else if (Position.MarketPosition == MarketPosition.Short)
+            {
+                highestInTrade = Math.Max(highestInTrade, High[0]);
+                double triggerPrice = trade50Level - 0.50 * (trade50Level - currentTp);
+
+                if (Low[0] <= triggerPrice && !slMoved)
+                {
+                    currentSl = highestInTrade + (Close[0] * 0.00005);
+                    SetStopLoss("50_Equilibrium_Short", CalculationMode.Price, currentSl, false);
+                    slMoved = true;
+                }
+            }
+        }
+    }
+}
