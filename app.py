@@ -214,10 +214,11 @@ def seed_demo_data_if_empty():
         for idx, pts in enumerate(mock_pnl):
             t_time = (base_time + datetime.timedelta(hours=idx*4)).strftime("%Y-%m-%d %H:%M:%S")
             pnl_usd = pts * 2.0 * 3
+            exit_p = 18500.0 + pts
             c.execute('''INSERT INTO trades 
                          (account_name, trade_time, asset, side, entry_price, exit_price, pnl_points, pnl_usd, contracts, execution_type)
-                         VALUES ('Topstep_100k_Alpha', ?, 'MNQ', 'BUY', 18500.0, 18500.0 + pts, pts, ?, 3, 'LIVE_RTH')''',
-                      (t_time, pnl_usd))
+                         VALUES ('Topstep_100k_Alpha', ?, 'MNQ', 'BUY', 18500.0, ?, ?, ?, 3, 'LIVE_RTH')''',
+                      (t_time, exit_p, pts, pnl_usd))
         conn.commit()
     conn.close()
 
