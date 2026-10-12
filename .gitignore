@@ -4,3 +4,4 @@ __pycache__/
 config.json
 trades.db
 .DS_Store
+.agents/
