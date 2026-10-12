@@ -15,180 +15,285 @@ from engine.broker_router import BrokerMultiAccountRouter
 
 # ----------------- PAGE CONFIGURATION -----------------
 st.set_page_config(
-    page_title="EQUILIBRIUM // Institutional Terminal",
+    page_title="Equilibrium Labs // Institutional Terminal",
     page_icon="⚡",
     layout="wide",
-    initial_sidebar_state="expanded"
+    initial_sidebar_state="collapsed"
 )
 
-# ----------------- HIGH-END MODERN CSS INJECTION -----------------
+# ----------------- MODERN SAAS CSS DESIGN SYSTEM -----------------
 st.markdown("""
 <style>
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
 
-    /* Global Theme */
+    /* Global CSS Reset & Layout */
     html, body, [class*="css"] {
-        font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-    }
-    .main {
-        background: radial-gradient(circle at 50% 0%, #111827 0%, #080C14 100%);
-        color: #E2E8F0;
+        font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
     }
     
-    /* Code & Number Styling */
-    code, .mono {
-        font-family: 'JetBrains Mono', monospace !important;
+    /* Clean Viewport Constraints (No Streamlit Bloat) */
+    .block-container {
+        padding-top: 1.25rem !important;
+        padding-bottom: 2.5rem !important;
+        padding-left: 2rem !important;
+        padding-right: 2rem !important;
+        max-width: 1480px;
+    }
+    #MainMenu, footer, header { 
+        display: none !important; 
     }
 
-    /* Top Navigation Banner */
-    .top-header {
+    /* Background Aesthetic */
+    .stApp {
+        background-color: #07090E !important;
+        background-image: 
+            radial-gradient(at 0% 0%, rgba(30, 58, 138, 0.15) 0px, transparent 50%),
+            radial-gradient(at 100% 0%, rgba(16, 185, 129, 0.1) 0px, transparent 50%),
+            radial-gradient(at 50% 100%, rgba(15, 23, 42, 0.3) 0px, transparent 50%) !important;
+        background-attachment: fixed !important;
+        color: #E2E8F0 !important;
+    }
+
+    /* Monospaced Figures */
+    .mono {
+        font-family: 'JetBrains Mono', monospace !important;
+        letter-spacing: -0.5px;
+    }
+
+    /* Modern SaaS Navigation Bar */
+    .saas-navbar {
         display: flex;
         justify-content: space-between;
         align-items: center;
-        background: rgba(17, 24, 39, 0.7);
-        backdrop-filter: blur(12px);
+        background: rgba(13, 18, 30, 0.75);
+        backdrop-filter: blur(16px);
+        -webkit-backdrop-filter: blur(16px);
         border: 1px solid rgba(255, 255, 255, 0.08);
-        border-radius: 14px;
-        padding: 18px 24px;
-        margin-bottom: 24px;
-        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.36);
+        border-radius: 16px;
+        padding: 14px 24px;
+        margin-bottom: 22px;
+        box-shadow: 0 4px 24px -1px rgba(0, 0, 0, 0.35);
     }
-    .logo-text {
-        font-size: 22px;
+    .brand-group {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+    }
+    .brand-logo-badge {
+        width: 36px;
+        height: 36px;
+        background: linear-gradient(135deg, #10B981 0%, #3B82F6 100%);
+        border-radius: 10px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
         font-weight: 800;
-        letter-spacing: -0.5px;
-        background: linear-gradient(135deg, #FFFFFF 0%, #94A3B8 100%);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
+        font-size: 18px;
+        color: #FFFFFF;
+        box-shadow: 0 0 20px rgba(16, 185, 129, 0.35);
     }
-    .live-badge {
+    .brand-title {
+        font-size: 18px;
+        font-weight: 700;
+        letter-spacing: -0.5px;
+        color: #F8FAFC;
+    }
+    .brand-subtitle {
+        font-size: 12px;
+        color: #64748B;
+        font-weight: 500;
+        letter-spacing: 0.2px;
+    }
+
+    /* Modern Badges & Pills */
+    .status-pill {
         display: inline-flex;
         align-items: center;
         gap: 8px;
-        background: rgba(16, 185, 129, 0.12);
-        border: 1px solid rgba(16, 185, 129, 0.3);
-        color: #10B981;
-        padding: 6px 14px;
+        background: rgba(16, 185, 129, 0.1);
+        border: 1px solid rgba(16, 185, 129, 0.25);
+        color: #34D399;
+        padding: 5px 12px;
         border-radius: 20px;
         font-size: 12px;
         font-weight: 600;
-        letter-spacing: 0.5px;
     }
-    .pulse-dot {
-        width: 8px;
-        height: 8px;
+    .pulse-indicator {
+        width: 7px;
+        height: 7px;
         background-color: #10B981;
         border-radius: 50%;
         box-shadow: 0 0 10px #10B981;
-        animation: pulse 2s infinite;
+        animation: pulseAnimation 2s infinite;
     }
-    @keyframes pulse {
+    @keyframes pulseAnimation {
         0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); }
-        70% { transform: scale(1); box-shadow: 0 0 0 8px rgba(16, 185, 129, 0); }
+        70% { transform: scale(1); box-shadow: 0 0 0 7px rgba(16, 185, 129, 0); }
         100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
     }
+    .session-badge {
+        background: rgba(30, 41, 59, 0.6);
+        border: 1px solid rgba(255, 255, 255, 0.06);
+        color: #94A3B8;
+        padding: 5px 12px;
+        border-radius: 20px;
+        font-size: 12px;
+        font-weight: 500;
+    }
 
-    /* Institutional KPI Glass Cards */
-    .metric-grid {
+    /* Institutional SaaS KPI Cards */
+    .kpi-container {
         display: grid;
         grid-template-columns: repeat(4, 1fr);
         gap: 16px;
-        margin-bottom: 24px;
+        margin-bottom: 22px;
     }
-    .kpi-card {
-        background: rgba(17, 24, 39, 0.65);
-        backdrop-filter: blur(10px);
-        border: 1px solid rgba(255, 255, 255, 0.06);
-        border-radius: 12px;
-        padding: 18px 20px;
+    .modern-card {
+        background: rgba(13, 18, 30, 0.65);
+        backdrop-filter: blur(14px);
+        -webkit-backdrop-filter: blur(14px);
+        border: 1px solid rgba(255, 255, 255, 0.07);
+        border-radius: 14px;
+        padding: 20px;
         position: relative;
         overflow: hidden;
-        transition: all 0.2s ease-in-out;
+        transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+        box-shadow: 0 4px 16px -2px rgba(0, 0, 0, 0.25);
     }
-    .kpi-card:hover {
-        border-color: rgba(59, 130, 246, 0.4);
+    .modern-card:hover {
+        border-color: rgba(56, 189, 248, 0.35);
         transform: translateY(-2px);
+        box-shadow: 0 12px 28px -4px rgba(0, 0, 0, 0.4);
     }
-    .kpi-title {
-        color: #94A3B8;
-        font-size: 11px;
+    .card-label {
+        font-size: 12px;
         font-weight: 600;
         text-transform: uppercase;
-        letter-spacing: 1px;
-        margin-bottom: 8px;
+        letter-spacing: 0.8px;
+        color: #64748B;
+        margin-bottom: 10px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
     }
-    .kpi-value {
+    .card-figure {
         font-family: 'JetBrains Mono', monospace;
-        font-size: 26px;
+        font-size: 28px;
         font-weight: 700;
+        letter-spacing: -1px;
         color: #F8FAFC;
-        letter-spacing: -0.5px;
+        line-height: 1.1;
+        margin-bottom: 10px;
     }
-    .kpi-delta-green {
-        color: #10B981;
-        font-size: 12px;
+    .card-footer-pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 11px;
         font-weight: 600;
-        margin-top: 6px;
+        padding: 3px 8px;
+        border-radius: 6px;
     }
-    .kpi-delta-blue {
+    .pill-emerald {
+        background: rgba(16, 185, 129, 0.12);
+        color: #34D399;
+        border: 1px solid rgba(16, 185, 129, 0.2);
+    }
+    .pill-sky {
+        background: rgba(56, 189, 248, 0.12);
         color: #38BDF8;
-        font-size: 12px;
-        font-weight: 600;
-        margin-top: 6px;
+        border: 1px solid rgba(56, 189, 248, 0.2);
+    }
+    .pill-rose {
+        background: rgba(244, 63, 94, 0.12);
+        color: #FB7185;
+        border: 1px solid rgba(244, 63, 94, 0.2);
     }
 
-    /* Sleek Custom Tabs */
+    /* SaaS Glass Panels */
+    .surface-panel {
+        background: rgba(13, 18, 30, 0.6);
+        backdrop-filter: blur(14px);
+        -webkit-backdrop-filter: blur(14px);
+        border: 1px solid rgba(255, 255, 255, 0.07);
+        border-radius: 16px;
+        padding: 24px;
+        margin-bottom: 22px;
+        box-shadow: 0 8px 32px -4px rgba(0, 0, 0, 0.3);
+    }
+    .panel-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 18px;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+        padding-bottom: 14px;
+    }
+    .panel-title {
+        font-size: 15px;
+        font-weight: 700;
+        color: #F1F5F9;
+        letter-spacing: -0.2px;
+    }
+    .panel-subtitle {
+        font-size: 12px;
+        color: #64748B;
+        font-weight: 400;
+    }
+
+    /* Tabs Alignment */
     .stTabs [data-baseweb="tab-list"] {
-        gap: 8px;
-        background: rgba(17, 24, 39, 0.5);
-        padding: 6px;
-        border-radius: 10px;
-        border: 1px solid rgba(255, 255, 255, 0.05);
-        margin-bottom: 20px;
+        background: rgba(15, 23, 42, 0.6) !important;
+        border: 1px solid rgba(255, 255, 255, 0.08) !important;
+        border-radius: 12px !important;
+        padding: 5px !important;
+        gap: 6px !important;
+        margin-bottom: 22px !important;
     }
     .stTabs [data-baseweb="tab"] {
-        background: transparent !important;
-        border: none !important;
-        border-radius: 8px;
-        padding: 10px 20px;
+        border-radius: 8px !important;
+        padding: 8px 18px !important;
+        font-size: 13px !important;
+        font-weight: 600 !important;
         color: #94A3B8 !important;
-        font-weight: 500;
-        font-size: 14px;
-        transition: all 0.2s ease;
+        border: none !important;
+        transition: all 0.2s ease !important;
     }
     .stTabs [aria-selected="true"] {
         background: #1E293B !important;
         color: #38BDF8 !important;
-        font-weight: 600 !important;
-        border: 1px solid rgba(56, 189, 248, 0.2) !important;
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35) !important;
     }
 
-    /* Glass Panels */
-    .glass-panel {
-        background: rgba(17, 24, 39, 0.6);
-        backdrop-filter: blur(12px);
-        border: 1px solid rgba(255, 255, 255, 0.07);
-        border-radius: 12px;
-        padding: 20px;
-        margin-bottom: 20px;
+    /* Modern Form Controls */
+    .stTextInput>div>div>input, .stSelectbox>div>div>div {
+        background-color: #0F172A !important;
+        border: 1px solid rgba(255, 255, 255, 0.1) !important;
+        border-radius: 8px !important;
+        color: #F8FAFC !important;
+        font-size: 13px !important;
     }
-
-    /* Custom Buttons */
     .stButton>button {
-        background: linear-gradient(135deg, #2563EB 0%, #1D4ED8 100%);
-        color: white;
-        border: 1px solid rgba(255, 255, 255, 0.1);
-        border-radius: 8px;
-        padding: 8px 18px;
-        font-weight: 600;
-        font-size: 13px;
-        transition: all 0.2s ease;
+        background: linear-gradient(135deg, #2563EB 0%, #1D4ED8 100%) !important;
+        color: #FFFFFF !important;
+        border: 1px solid rgba(255, 255, 255, 0.12) !important;
+        border-radius: 8px !important;
+        padding: 8px 20px !important;
+        font-size: 13px !important;
+        font-weight: 600 !important;
+        box-shadow: 0 4px 14px rgba(37, 99, 235, 0.35) !important;
+        transition: all 0.2s ease !important;
     }
     .stButton>button:hover {
-        background: linear-gradient(135deg, #3B82F6 0%, #2563EB 100%);
-        box-shadow: 0 0 15px rgba(59, 130, 246, 0.4);
-        transform: translateY(-1px);
+        transform: translateY(-1px) !important;
+        box-shadow: 0 6px 20px rgba(37, 99, 235, 0.5) !important;
+    }
+
+    /* DataFrame Styling */
+    .stDataFrame {
+        border: 1px solid rgba(255, 255, 255, 0.06) !important;
+        border-radius: 12px !important;
+        overflow: hidden !important;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -196,19 +301,20 @@ st.markdown("""
 # Initialize Database
 init_db()
 
-# Auto-seed sample demo trades if fresh install so UI is immediately gorgeous
+# Auto-seed sample demo trades if empty
 def seed_demo_data_if_empty():
     conn = get_connection()
     c = conn.cursor()
     c.execute("SELECT COUNT(*) FROM trades")
     count = c.fetchone()[0]
     if count == 0:
-        # Seed 1 initial account
         c.execute('''INSERT OR IGNORE INTO accounts 
                      (account_name, broker, api_key, api_secret, contracts, is_active, created_at)
                      VALUES ('Topstep_100k_Alpha', 'Topstep (Tradovate)', 'DEMO_KEY_8829', 'DEMO_SECRET', 3, 1, '2026-10-01 09:30:00')''')
+        c.execute('''INSERT OR IGNORE INTO accounts 
+                     (account_name, broker, api_key, api_secret, contracts, is_active, created_at)
+                     VALUES ('Apex_100k_Funded', 'Apex Trader Funding', 'APEX_PROD_102', 'APEX_SECRET', 3, 1, '2026-10-01 09:30:00')''')
         
-        # Seed sample curve (Pure RTH sequence)
         base_time = datetime.datetime.now() - datetime.timedelta(days=7)
         mock_pnl = [18.5, 22.0, -8.0, 31.5, 14.0, -6.5, 28.0, 19.5, 34.0, -7.0, 26.5, 42.0]
         for idx, pts in enumerate(mock_pnl):
@@ -224,7 +330,7 @@ def seed_demo_data_if_empty():
 
 seed_demo_data_if_empty()
 
-# Initialize Engine State
+# Initialize Engine Singletons
 if "strategy" not in st.session_state:
     st.session_state.strategy = PureRTHEquilibriumStrategyEngine(asset="MNQ")
 if "risk" not in st.session_state:
@@ -232,66 +338,53 @@ if "risk" not in st.session_state:
 if "router" not in st.session_state:
     st.session_state.router = BrokerMultiAccountRouter(asset="MNQ")
 
-# ----------------- MODERN HEADER -----------------
-st.markdown("""
-<div class="top-header">
-    <div>
-        <div class="logo-text">⚡ 50% EQUILIBRIUM // QUANT TERMINAL</div>
-        <div style="font-size: 13px; color: #94A3B8; margin-top: 4px;">
-            High-Frequency Order Flow Engine • Pure RTH Day Session (09:30 – 15:55 EST)
+# ----------------- MODERN SAAS TOPBAR -----------------
+accounts_df = get_accounts()
+active_count = len(accounts_df[accounts_df['is_active'] == 1]) if not accounts_df.empty else 0
+
+st.markdown(f"""
+<div class="saas-navbar">
+    <div class="brand-group">
+        <div class="brand-logo-badge">⚡</div>
+        <div>
+            <div class="brand-title">EQUILIBRIUM LABS // QUANT TERMINAL</div>
+            <div class="brand-subtitle">Automated Institutional Order Flow Engine • Chicago CME Gateway</div>
         </div>
     </div>
-    <div style="display: flex; gap: 12px; align-items: center;">
-        <div class="live-badge">
-            <div class="pulse-dot"></div>
-            SYSTEM OPERATIONAL
+    <div style="display: flex; gap: 10px; align-items: center;">
+        <div class="session-badge">Asset: <b>MNQ (Micro Nasdaq)</b></div>
+        <div class="session-badge">Session: <b>09:30 – 15:55 EST</b></div>
+        <div class="status-pill">
+            <div class="pulse-indicator"></div>
+            ENGINE LISTENING
         </div>
     </div>
 </div>
 """, unsafe_allow_html=True)
 
-# ----------------- SIDEBAR -----------------
-st.sidebar.markdown("### 🎛️ Terminal Controls")
-engine_active = st.sidebar.toggle("Engine Listener", value=True)
-if engine_active:
-    st.sidebar.success("Status: STREAMING 1-MIN BARS")
-else:
-    st.sidebar.warning("Status: EXECUTION HALTED")
-
-st.sidebar.markdown("---")
-st.sidebar.markdown("### ⚙️ Session Settings")
-selected_asset = st.sidebar.selectbox("Active Asset Feed", ["MNQ (Micro Nasdaq)", "MES (Micro S&P 500)"])
-st.sidebar.info("• Session: **09:30 – 15:55 EST**\n• Hard Flatten: **15:59 EST**\n• Overnight Exposure: **$0.00**")
-
-accounts_df = get_accounts()
-active_count = len(accounts_df[accounts_df['is_active'] == 1]) if not accounts_df.empty else 0
-st.sidebar.markdown(f"**Connected API Accounts:** `{active_count}`")
-
-st.sidebar.markdown("---")
-st.sidebar.caption("Institutional Build • v4.2 Production")
-
-# ----------------- MAIN NAVIGATION -----------------
-tab_dashboard, tab_engine, tab_accounts, tab_history = st.tabs([
-    "📊 Quant Dashboard",
+# ----------------- SAAS TABS NAVIGATION -----------------
+tab_dash, tab_strat, tab_acc, tab_audit = st.tabs([
+    "📈 Performance Analytics",
     "⚡ Strategy & Wave Engine",
     "🔑 Multi-Account API Hub",
     "📜 Full Trade Audit Log"
 ])
 
-# ================= TAB 1: QUANT DASHBOARD =================
-with tab_dashboard:
+# ================= TAB 1: PERFORMANCE ANALYTICS =================
+with tab_dash:
     trades_df = get_trades_df()
     
     if trades_df.empty:
         st.info("No executions recorded yet. Add an account or simulate trades in Tab 2.")
     else:
-        # Account Filter Selector
-        acc_names = ["ALL CONNECTED ACCOUNTS"] + trades_df['account_name'].unique().tolist()
-        c_filter, c_spacer = st.columns([1, 2])
-        selected_acc = c_filter.selectbox("Select Portfolio View:", acc_names)
-        
+        # SaaS Sub-Header Filters
+        col_select, col_empty = st.columns([1, 3])
+        with col_select:
+            acc_list = ["ALL PORTFOLIOS (AGGREGATED)"] + trades_df['account_name'].unique().tolist()
+            selected_acc = st.selectbox("Portfolio View", acc_list, label_visibility="collapsed")
+            
         df_view = trades_df.copy()
-        if selected_acc != "ALL CONNECTED ACCOUNTS":
+        if selected_acc != "ALL PORTFOLIOS (AGGREGATED)":
             df_view = df_view[df_view['account_name'] == selected_acc]
             
         df_view = df_view.sort_values(by='trade_time', ascending=True).reset_index(drop=True)
@@ -299,217 +392,272 @@ with tab_dashboard:
         df_view['peak'] = df_view['cum_pnl'].cummax()
         df_view['drawdown_usd'] = df_view['cum_pnl'] - df_view['peak']
         
-        # Quant Calculations
-        total_profit = df_view['pnl_usd'].sum()
+        # Financial Quant Metrics
+        total_pnl = df_view['pnl_usd'].sum()
         total_trades = len(df_view)
         wins = len(df_view[df_view['pnl_usd'] > 0])
         win_rate = (wins / total_trades * 100) if total_trades > 0 else 0.0
         
         gp = df_view[df_view['pnl_usd'] > 0]['pnl_usd'].sum()
         gl = abs(df_view[df_view['pnl_usd'] <= 0]['pnl_usd'].sum())
-        pf = (gp / gl) if gl > 0 else (99.9 if gp > 0 else 0.0)
+        profit_factor = (gp / gl) if gl > 0 else (99.9 if gp > 0 else 0.0)
         max_dd = df_view['drawdown_usd'].min()
         
-        # HTML/CSS Modern Glass KPI Grid
+        # Modern SaaS KPI Cards Grid
         st.markdown(f"""
-        <div class="metric-grid">
-            <div class="kpi-card">
-                <div class="kpi-title">Total Net Profit</div>
-                <div class="kpi-value" style="color: {'#10B981' if total_profit >= 0 else '#EF4444'};">
-                    ${total_profit:,.2f}
+        <div class="kpi-container">
+            <div class="modern-card">
+                <div class="card-label">
+                    <span>Total Realized Profit</span>
+                    <span>💵</span>
                 </div>
-                <div class="kpi-delta-green">▲ {win_rate:.1f}% Win Rate</div>
-            </div>
-            <div class="kpi-card">
-                <div class="kpi-title">Profit Factor</div>
-                <div class="kpi-value" style="color: #38BDF8;">
-                    {pf:.2f}
+                <div class="card-figure" style="color: {'#34D399' if total_pnl >= 0 else '#F87171'};">
+                    ${total_pnl:,.2f}
                 </div>
-                <div class="kpi-delta-blue">Institutional Grade (>2.0)</div>
+                <div class="card-footer-pill pill-emerald">
+                    ▲ {win_rate:.1f}% Win Rate ({wins}/{total_trades})
+                </div>
             </div>
-            <div class="kpi-card">
-                <div class="kpi-title">Maximum Drawdown</div>
-                <div class="kpi-value" style="color: #F87171;">
+            <div class="modern-card">
+                <div class="card-label">
+                    <span>Profit Factor</span>
+                    <span>⚖️</span>
+                </div>
+                <div class="card-figure" style="color: #38BDF8;">
+                    {profit_factor:.2f}
+                </div>
+                <div class="card-footer-pill pill-sky">
+                    Institutional Benchmark (> 2.0)
+                </div>
+            </div>
+            <div class="modern-card">
+                <div class="card-label">
+                    <span>Peak-to-Valley Drawdown</span>
+                    <span>🛡️</span>
+                </div>
+                <div class="card-figure" style="color: #FB7185;">
                     ${abs(max_dd):,.2f}
                 </div>
-                <div style="color: #94A3B8; font-size: 12px; margin-top: 6px;">Peak-to-Valley Heat</div>
-            </div>
-            <div class="kpi-card">
-                <div class="kpi-title">Total Executions</div>
-                <div class="kpi-value">
-                    {total_trades:,}
+                <div class="card-footer-pill pill-rose">
+                    Max Capital Stress
                 </div>
-                <div style="color: #94A3B8; font-size: 12px; margin-top: 6px;">{wins} Wins / {total_trades - wins} Losses</div>
+            </div>
+            <div class="modern-card">
+                <div class="card-label">
+                    <span>Active Portfolios</span>
+                    <span>⚡</span>
+                </div>
+                <div class="card-figure" style="color: #F8FAFC;">
+                    {active_count} <span style="font-size: 14px; color: #64748B;">Connected</span>
+                </div>
+                <div class="card-footer-pill pill-sky">
+                    Concurrent Trade Copier Armed
+                </div>
             </div>
         </div>
         """, unsafe_allow_html=True)
         
-        # Plotly Institutional Dark Equity Curve
-        st.markdown("<div class='glass-panel'>", unsafe_allow_html=True)
-        st.markdown("#### 📈 Cumulative Realized Equity Curve")
+        # Interactive Dark-Mode Plotly Chart
+        st.markdown("""
+        <div class="surface-panel">
+            <div class="panel-header">
+                <div>
+                    <div class="panel-title">Cumulative Performance Growth</div>
+                    <div class="panel-subtitle">Realized equity progression across New York cash trading sessions</div>
+                </div>
+                <div class="session-badge">Zero Overnight Exposure</div>
+            </div>
+        """, unsafe_allow_html=True)
         
         fig = go.Figure()
         fig.add_trace(go.Scatter(
             x=df_view['trade_time'],
             y=df_view['cum_pnl'],
             mode='lines',
-            name='Net PnL ($)',
-            line=dict(color='#00FFAA', width=2.5),
+            name='Cumulative Equity ($)',
+            line=dict(color='#10B981', width=2.5),
             fill='tozeroy',
-            fillcolor='rgba(0, 255, 170, 0.06)'
+            fillcolor='rgba(16, 185, 129, 0.07)'
         ))
+        
         fig.update_layout(
             template='plotly_dark',
             paper_bgcolor='rgba(0,0,0,0)',
             plot_bgcolor='rgba(0,0,0,0)',
-            height=380,
+            height=390,
             margin=dict(l=10, r=10, t=10, b=10),
             xaxis=dict(
                 showgrid=True,
-                gridcolor='rgba(255,255,255,0.05)',
-                color='#94A3B8'
+                gridcolor='rgba(255,255,255,0.04)',
+                color='#64748B',
+                zeroline=False
             ),
             yaxis=dict(
                 showgrid=True,
-                gridcolor='rgba(255,255,255,0.05)',
-                color='#94A3B8',
-                tickprefix="$"
+                gridcolor='rgba(255,255,255,0.04)',
+                color='#64748B',
+                tickprefix="$",
+                zeroline=False
             ),
             hovermode="x unified"
         )
         st.plotly_chart(fig, use_container_width=True)
         st.markdown("</div>", unsafe_allow_html=True)
 
-# ================= TAB 2: STRATEGY & SIGNAL ENGINE =================
-with tab_engine:
-    st.markdown("<div class='glass-panel'>", unsafe_allow_html=True)
-    st.subheader("⚡ Live Structural Orderflow Engine")
-    st.write("Real-time monitoring of the 5-layer pipeline: Anchor, Peak, 50% Equilibrium level, and Dynamic Trailing Stop.")
-    
+# ================= TAB 2: STRATEGY & WAVE ENGINE =================
+with tab_strat:
     strat = st.session_state.strategy
     risk = st.session_state.risk
     stat = strat.get_status()
     
-    e1, e2, e3 = st.columns(3)
-    with e1:
-        st.markdown("##### 📍 Active Fractal Structure")
-        st.markdown(f"**Dominant Bias:** `{stat['active_bias']}`")
-        st.markdown(f"**Bull Wave State:** `{stat['bull_state']}`")
-        st.markdown(f"**Anchor (0.0%):** `{stat['bull_anchor']}`")
-        st.markdown(f"**Peak (100.0%):** `{stat['bull_peak']}`")
-    with e2:
-        st.markdown("##### 🛡️ Risk & Trailing Status")
-        st.markdown(f"**Position Status:** `{'IN TRADE' if risk.in_trade else 'FLAT (WAITING)'}`")
+    st.markdown("""
+    <div class="surface-panel">
+        <div class="panel-header">
+            <div>
+                <div class="panel-title">Real-Time Wave Mechanics & State Visualizer</div>
+                <div class="panel-subtitle">Audited 4-State Cycle tracking Anchor, Peak, and 50% Equilibrium touch</div>
+            </div>
+            <div class="session-badge">Pure RTH 09:30 AM Fresh Start</div>
+        </div>
+    """, unsafe_allow_html=True)
+    
+    c_s1, c_s2, c_s3 = st.columns(3)
+    with c_s1:
+        st.markdown("##### 📍 Fractal Coordinates")
+        st.markdown(f"**Dominant Direction:** `{stat['active_bias']}`")
+        st.markdown(f"**Wave State:** `{stat['bull_state']}`")
+        st.markdown(f"**Session Anchor (0.0%):** `{stat['bull_anchor']}`")
+        st.markdown(f"**Session Peak (100.0%):** `{stat['bull_peak']}`")
+    with c_s2:
+        st.markdown("##### 🛡️ Risk & Trailing Protocol")
+        st.markdown(f"**Active Position:** `{'IN TRADE' if risk.in_trade else 'FLAT (AWAITING 50% TOUCH)'}`")
         if risk.in_trade:
             st.markdown(f"**Side:** `{risk.side}` @ `{risk.entry_price:.2f}`")
-            st.markdown(f"**Target (TP):** `{risk.tp_price:.2f}`")
-            st.markdown(f"**Stop Loss:** `{risk.sl_price:.2f}`")
-            st.markdown(f"**Trailing SL Moved:** `{'YES (Risk Cut ~75%)' if risk.sl_moved else 'NO (Initial SL)'}`")
+            st.markdown(f"**Take Profit Target:** `{risk.tp_price:.2f}`")
+            st.markdown(f"**Protective Stop Loss:** `{risk.sl_price:.2f}`")
+            st.markdown(f"**Trailing SL Engaged:** `{'YES (Risk Cut ~75%)' if risk.sl_moved else 'NO (At Anchor)'}`")
         else:
-            st.markdown("*Ready to buy 50% touch upon confirmation.*")
-    with e3:
-        st.markdown("##### 🚀 Execution Target")
-        st.markdown(f"**Target Symbol:** `{strat.asset}`")
-        st.markdown(f"**Execution Type:** `Direct Market Order`")
-        st.markdown(f"**Slippage Buffer:** `2 Ticks (0.50 pts)`")
-        st.markdown(f"**EOD Liquidator:** `Arming for 15:59 EST`")
+            st.markdown("*Ready to buy 50% equilibrium line upon confirmation.*")
+    with c_s3:
+        st.markdown("##### 🚀 Execution Rules")
+        st.markdown(f"**Instrument:** `{strat.asset}`")
+        st.markdown(f"**Execution Model:** `Immediate Market Order`")
+        st.markdown(f"**Slippage Penalty:** `2 Ticks (0.50 pts absorbed)`")
+        st.markdown(f"**EOD Liquidator:** `Arming for 15:59 EST Hard Flatten`")
         
     st.markdown("---")
-    st.markdown("#### 🎮 Live Pipeline Simulation Controls")
-    st.caption("Test the end-to-end signal dispatch directly in your browser:")
+    st.markdown("##### 🕹️ Interactive Pipeline Simulator")
+    st.caption("Trigger live bar execution through the 5-layer pipeline in real time:")
     
-    b1, b2, b3 = st.columns(3)
-    if b1.button("1. 🔔 Simulate 09:30 AM RTH Open"):
+    sim_c1, sim_c2, sim_c3 = st.columns(3)
+    if sim_c1.button("1. 🔔 Simulate 09:30 AM Opening Bell"):
         strat.reset_at_open(18530.0, 18500.0)
-        st.success("✅ 09:30 AM Opening Bell: Slate wiped 100% clean. Anchor = 18500.0, Peak = 18530.0")
+        st.success("✅ 09:30 AM Bell: Slate wiped 100% clean. Anchor = 18500.0, Peak = 18530.0.")
         
-    if b2.button("2. 📉 Simulate Impulse & 50% Touch Entry"):
+    if sim_c2.button("2. 📉 Simulate Impulse & 50% Touch Entry"):
         strat.day_low = 18500.0
         strat.bull_anchor = 18500.0
         strat.bull_extreme = 18550.0
         strat.bull_state = 3
         strat.active_bias = "BULL"
         
-        # Touches 50% line (18525.0)
+        # 50% line is 18525.0
         sig = strat.process_bar(18535.0, 18524.5, 18530.0, is_entry_allowed=True)
         if sig:
             risk.open_position(sig)
             st.session_state.router.dispatch_entry(sig)
-            st.success(f"🚀 50% TOUCH TRIGGERED! Long order entered at {sig['entry_price']:.2f}. SL placed at {sig['sl_price']:.2f}.")
+            st.success(f"🚀 50% TOUCH TRIGGERED! Long order filled at {sig['entry_price']:.2f}. Initial SL set at {sig['sl_price']:.2f}.")
             
-    if b3.button("3. 🎯 Simulate Take Profit Reached"):
+    if sim_c3.button("3. 🎯 Simulate Take Profit Reached"):
         if risk.in_trade:
             tp = risk.tp_price
             exit_ev = risk.evaluate_bar(tp + 2.0, tp - 2.0, tp)
             if exit_ev:
                 st.session_state.router.dispatch_exit(exit_ev, risk.side, risk.entry_price)
-                st.success(f"🎉 TARGET REACHED! +{exit_ev['pnl_points']:.2f} points booked across all accounts! See Tab 1.")
+                st.success(f"🎉 TAKE PROFIT REACHED! Logged +{exit_ev['pnl_points']:.2f} points across all connected accounts. View Tab 1!")
         else:
-            st.warning("Position is flat. Click Button 2 first to enter a position!")
+            st.warning("Position is currently flat. Click Button 2 first to enter a position!")
             
     st.markdown("</div>", unsafe_allow_html=True)
 
 # ================= TAB 3: MULTI-ACCOUNT API HUB =================
-with tab_accounts:
-    st.markdown("<div class='glass-panel'>", unsafe_allow_html=True)
-    st.subheader("🔑 Multi-Account API Hub")
-    st.write("Manage all your funded and evaluation accounts. The engine broadcasts all 50% trades across your active accounts simultaneously.")
+with tab_acc:
+    st.markdown("""
+    <div class="surface-panel">
+        <div class="panel-header">
+            <div>
+                <div class="panel-title">Multi-Account API Management</div>
+                <div class="panel-subtitle">Broadcast institutional 50% signals concurrently across all linked prop firm accounts</div>
+            </div>
+            <div class="session-badge">Concurrent Multi-Tenant Copier</div>
+        </div>
+    """, unsafe_allow_html=True)
     
     accs = get_accounts()
     if not accs.empty:
-        st.markdown("##### Connected Portfolios")
+        st.markdown("##### Connected Accounts")
         st.dataframe(
             accs[['id', 'account_name', 'broker', 'contracts', 'is_active', 'created_at']],
             use_container_width=True
         )
         
-        act1, act2 = st.columns([1, 3])
-        target_id = act1.number_input("Select Account ID:", min_value=1, step=1)
-        if act2.button("Toggle Active / Paused Status"):
+        c_act1, c_act2, c_act3 = st.columns([1, 1, 2])
+        target_id = c_act1.number_input("Account ID", min_value=1, step=1, label_visibility="collapsed")
+        if c_act2.button("Toggle Active / Paused"):
             curr = accs[accs['id'] == target_id]['is_active'].values
             if len(curr) > 0:
                 toggle_account_status(target_id, 0 if curr[0] == 1 else 1)
                 st.rerun()
+        if c_act3.button("Delete Account Connection"):
+            delete_account(target_id)
+            st.rerun()
     else:
         st.info("No API accounts linked yet. Add your first account below.")
         
     st.markdown("---")
-    st.markdown("##### Link New Broker / Prop Firm API Account")
-    with st.form("new_account_form"):
-        n1, n2 = st.columns(2)
-        acc_name = n1.text_input("Account Name (e.g., Topstep_100k_Main)", placeholder="Topstep_100k_01")
-        broker_type = n2.selectbox("Platform / Feed", [
+    st.markdown("##### Link New Broker / Prop Firm Account")
+    with st.form("add_acc_form"):
+        col_f1, col_f2 = st.columns(2)
+        acc_n = col_f1.text_input("Account Identifier", placeholder="Topstep_100k_Combine_02")
+        brk_t = col_f2.selectbox("Broker / Prop Firm Feed", [
             "Topstep (Tradovate)", "Apex Trader Funding", "Tradovate Live API", "NinjaTrader 8 (Local)", "Interactive Brokers"
         ])
         
-        k1, k2 = st.columns(2)
-        api_key = k1.text_input("API Key / Username", type="password")
-        api_secret = k2.text_input("API Secret / Password", type="password")
+        col_f3, col_f4 = st.columns(2)
+        a_key = col_f3.text_input("API Key / Username", type="password")
+        a_sec = col_f4.text_input("API Secret / Password", type="password")
         
-        contracts_qty = st.slider("Micro Contracts to Trade", min_value=1, max_value=20, value=3)
+        c_qty = st.slider("Position Size (Micro Contracts)", min_value=1, max_value=20, value=3)
         
-        if st.form_submit_button("🔗 Link & Authorize Account"):
-            if acc_name and api_key:
-                add_account(acc_name, broker_type, api_key, api_secret, contracts_qty)
-                st.success(f"Account '{acc_name}' linked and armed successfully!")
+        if st.form_submit_button("🔗 Authorize & Link Account"):
+            if acc_n and a_key:
+                add_account(acc_n, brk_t, a_key, a_sec, c_qty)
+                st.success(f"Account '{acc_n}' linked and armed successfully!")
                 st.rerun()
             else:
                 st.error("Please provide both Account Name and API Key.")
     st.markdown("</div>", unsafe_allow_html=True)
 
 # ================= TAB 4: FULL TRADE AUDIT LOG =================
-with tab_history:
-    st.markdown("<div class='glass-panel'>", unsafe_allow_html=True)
-    st.subheader("📜 Comprehensive Execution Audit Trail")
-    st.write("Complete institutional record of every filled order, slippage penalty, exit price, and dollar PnL.")
+with tab_audit:
+    st.markdown("""
+    <div class="surface-panel">
+        <div class="panel-header">
+            <div>
+                <div class="panel-title">Institutional Trade Audit Statement</div>
+                <div class="panel-subtitle">Permanent cryptographic ledger of all filled orders, slippage offsets, and cash PnL</div>
+            </div>
+            <div class="session-badge">Verified RTH Audit Trail</div>
+        </div>
+    """, unsafe_allow_html=True)
     
     all_trades = get_trades_df()
     if not all_trades.empty:
-        csv = all_trades.to_csv(index=False).encode('utf-8')
+        csv_bytes = all_trades.to_csv(index=False).encode('utf-8')
         st.download_button(
             label="📥 Export Full Audit Statement (.CSV)",
-            data=csv,
-            file_name=f"institutional_trade_statement_{datetime.date.today()}.csv",
+            data=csv_bytes,
+            file_name=f"equilibrium_statement_{datetime.date.today()}.csv",
             mime="text/csv"
         )
         st.dataframe(all_trades, use_container_width=True)
