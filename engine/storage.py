@@ -99,4 +99,20 @@ def get_trades_df():
         df['trade_time'] = pd.to_datetime(df['trade_time'])
     return df
 
+# System State Operations
+def get_system_state(key, default=None):
+    conn = get_connection()
+    c = conn.cursor()
+    c.execute("SELECT value FROM system_state WHERE key = ?", (key,))
+    row = c.fetchone()
+    conn.close()
+    return row[0] if row else default
+
+def set_system_state(key, value):
+    conn = get_connection()
+    c = conn.cursor()
+    c.execute("INSERT OR REPLACE INTO system_state (key, value) VALUES (?, ?)", (key, str(value)))
+    conn.commit()
+    conn.close()
+
 init_db()
