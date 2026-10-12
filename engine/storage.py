@@ -68,14 +68,14 @@ def add_account(name, broker, api_key, api_secret, contracts=3):
 def toggle_account_status(account_id, is_active):
     conn = get_connection()
     c = conn.cursor()
-    c.execute("UPDATE accounts SET is_active = ? WHERE id = ?", (is_active, account_id))
+    c.execute("UPDATE accounts SET is_active = ? WHERE id = ?", (int(is_active), int(account_id)))
     conn.commit()
     conn.close()
 
 def delete_account(account_id):
     conn = get_connection()
     c = conn.cursor()
-    c.execute("DELETE FROM accounts WHERE id = ?", (account_id,))
+    c.execute("DELETE FROM accounts WHERE id = ?", (int(account_id),))
     conn.commit()
     conn.close()
 
