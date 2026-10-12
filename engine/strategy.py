@@ -120,7 +120,7 @@ class PureRTHEquilibriumStrategyEngine:
                 if self.active_bias == "BEAR": self.active_bias = None
             else:
                 if low_p < self.bear_extreme: self.bear_extreme = low_p
-                bear_50 = bear_extreme + 0.50 * (self.bear_anchor - self.bear_extreme)
+                bear_50 = self.bear_extreme + 0.50 * (self.bear_anchor - self.bear_extreme)
                 if is_entry_allowed and self.active_bias == "BEAR" and (self.bear_anchor - self.bear_extreme) >= min_range and high_p >= bear_50:
                     buffer = close_p * 0.00005
                     signal = {

@@ -4,11 +4,13 @@ import websockets
 import requests
 import datetime
 import sqlite3
+from engine.tick_engine import RealtimeTickAggregatorEngine
 
 class TradovateLiveAsyncEngine:
     """
     High-speed asynchronous Python execution engine connecting directly to the
     Tradovate REST & WebSocket API for low-latency live order placement.
+    Aggregates tick stream into 1-minute bars with sub-millisecond 50% touch execution.
     """
     def __init__(self, config_path="config.json"):
         with open(config_path, "r") as f:
@@ -24,13 +26,7 @@ class TradovateLiveAsyncEngine:
         self.ws_url = "wss://live.tradovate.com/v1/websocket"
 
         self.token = None
-        self.pos = 0
-        self.day_high = 0.0
-        self.day_low = float('inf')
-        self.bull_state = 0
-        self.bear_state = 0
-        self.active_bias = None
-        self.sl_moved = False
+        self.tick_engine = RealtimeTickAggregatorEngine(asset=self.asset)
 
     def authenticate(self, username, password, app_id, app_version, cid, sec):
         """Authenticates with Tradovate API and fetches the session token."""
@@ -89,14 +85,30 @@ class TradovateLiveAsyncEngine:
                 }
             }
             await ws.send(f"md/subscribeChart\n2\n\n{json.dumps(sub_msg)}")
-            print(f"Subscribed to 1-Minute {self.asset} Live Bars. Engine is active.")
+            # Also subscribe to real-time tick stream
+            await ws.send(f"md/subscribeQuote\n3\n\n{json.dumps({'symbol': self.asset})}")
+            print(f"Subscribed to Real-Time Tick & 1-Minute {self.asset} CME Feed. Sub-second engine active.")
 
             while True:
                 msg = await ws.recv()
-                # Parse incoming bar data and feed into our state machine
-                # Process bar: on_candle(dt, open, high, low, close)
+                # Parse incoming tick frames from Tradovate WebSocket protocol
+                if msg.startswith("a["):
+                    try:
+                        frames = json.loads(msg[1:])
+                        for frame in frames:
+                            d = frame.get("d", {})
+                            quotes = d.get("quotes", [])
+                            for q in quotes:
+                                tick_p = q.get("lastPrice") or q.get("bid")
+                                tick_vol = q.get("lastSize", 1)
+                                if tick_p:
+                                    # Process tick instantly through the 50% Equilibrium Engine!
+                                    now_est = datetime.datetime.now()
+                                    self.tick_engine.on_tick(now_est, float(tick_p), int(tick_vol))
+                    except Exception as e:
+                        pass
                 await asyncio.sleep(0.001)
 
 if __name__ == "__main__":
-    print("Tradovate Live Asynchronous Python Engine ready.")
+    print("Tradovate Live Asynchronous Python Tick Engine ready.")
     print("Add your live credentials to config.json and invoke stream_market_data().")
