@@ -383,12 +383,8 @@ st.markdown("""
 # Initialize Storage
 init_db()
 
-# Auto-seed sample demo accounts if empty
+# Load Accounts (Fresh state - zero demo auto-seeding)
 accounts_df = get_accounts()
-if accounts_df.empty:
-    add_account("Topstep_100k_Alpha", "Topstep (Tradovate)", "DEMO_KEY_8829", "DEMO_SECRET", 3)
-    add_account("Apex_100k_Funded", "Apex Trader Funding", "APEX_PROD_102", "APEX_SECRET", 3)
-    accounts_df = get_accounts()
 
 # Singletons in Session State
 if "strategy" not in st.session_state:
@@ -405,10 +401,11 @@ if "tick_engine" not in st.session_state:
         router=st.session_state.router
     )
 
-# Retrieve or initialize Data Feed State
-feed_connected = get_system_state("data_feed_connected", "1") == "1"
+# Retrieve or initialize Data Feed State (Defaults to disconnected on fresh start)
+feed_connected = get_system_state("data_feed_connected", "0") == "1"
 feed_provider = get_system_state("data_feed_provider", "Tradovate WebSocket API")
 feed_asset = get_system_state("data_feed_asset", "MNQ")
+saved_feed_key = get_system_state("data_feed_key", "")
 
 active_accounts_count = len(accounts_df[accounts_df['is_active'] == 1]) if not accounts_df.empty else 0
 tick_engine = st.session_state.tick_engine
@@ -428,15 +425,9 @@ def log_temp_event(category, message, level="INFO"):
     if len(st.session_state.temp_logs) > 150:
         st.session_state.temp_logs = st.session_state.temp_logs[-150:]
 
-# Initialize Default Temp Logs if empty
-if "temp_logs" not in st.session_state or len(st.session_state.temp_logs) == 0:
-    st.session_state.temp_logs = [
-        {"time": "09:30:00.000", "category": "SYSTEM", "level": "INFO", "message": "Pure RTH Day Session initialized (09:30 - 15:55 EST). Fresh slate active."},
-        {"time": "09:30:00.042", "category": "FEED", "level": "INFO", "message": f"{feed_provider} L1/L2 connected. Ping: 12ms. Instrument: {feed_asset}."},
-        {"time": "09:30:00.110", "category": "ROUTER", "level": "INFO", "message": f"Multi-account router armed: {active_accounts_count} accounts ready for execution."},
-        {"time": "09:30:01.250", "category": "TICK", "level": "TICK", "message": f"First CME tick ingested: {feed_asset} @ 18,500.00 | Volume: 14 contracts."},
-        {"time": "09:30:01.251", "category": "STRATEGY", "level": "STATE", "message": "09:30 AM Opening Bell reference anchor established @ 18,500.00."},
-    ]
+# Initialize Fresh Temp Logs (Zero mock/simulated logs)
+if "temp_logs" not in st.session_state:
+    st.session_state.temp_logs = []
 
 if "show_temp_logs" not in st.session_state:
     st.session_state.show_temp_logs = False
@@ -454,7 +445,7 @@ st.markdown(f"""
             <span class="{'pulse-dot' if feed_connected else ''}"></span>
             {'TICK FEED: ACTIVE' if feed_connected else 'TICK FEED: IDLE'}
         </span>
-        <span class="status-pill status-emerald">
+        <span class="status-pill {'status-emerald' if active_accounts_count > 0 else 'status-slate'}">
             {active_accounts_count} TRADING ACCOUNTS ARMED
         </span>
         <span class="status-pill status-slate">
@@ -486,7 +477,7 @@ with col_data:
     with c_p1:
         provider_choice = st.selectbox(
             "Feed Provider",
-            ["Tradovate WebSocket API", "Rithmic R|API+", "Interactive Brokers (TWS)", "Databento CME Real-time", "Simulated Live Feed"],
+            ["Tradovate WebSocket API", "Rithmic R|API+", "Interactive Brokers (TWS)", "Databento CME Real-time"],
             index=0 if feed_provider == "Tradovate WebSocket API" else 1
         )
     with c_p2:
@@ -502,82 +493,67 @@ with col_data:
     with col_sess:
         st.text_input("Session Anchor", value="09:30–15:55 EST (Pure RTH)", disabled=True)
 
-    api_key_input = st.text_input("Feed API Key / Token", value="tk_live_cme_8839201948", type="password")
+    api_key_input = st.text_input(
+        "Feed API Key / Token", 
+        value=saved_feed_key, 
+        type="password",
+        placeholder="Enter Live CME Feed API Key or Access Token"
+    )
 
-    # Tick Engine Telemetry Box
-    last_price_str = f"{tick_engine.last_tick_price:.2f}" if tick_engine.last_tick_price > 0 else "18,532.50"
+    # Tick Engine Telemetry Box (Real-Time State, Zero Simulated Fallback Values)
+    if tick_engine.last_tick_price > 0:
+        last_price_str = f"{tick_engine.last_tick_price:,.2f}"
+    else:
+        last_price_str = "Standby (Awaiting Ticks)"
+
     active_bar = tick_engine.current_bar
     if active_bar:
-        bar_str = f"O: {active_bar['open']:.2f} | H: {active_bar['high']:.2f} | L: {active_bar['low']:.2f} | C: {active_bar['close']:.2f}"
+        bar_str = f"O: {active_bar['open']:.2f} | H: {active_bar['high']:.2f} | L: {active_bar['low']:.2f} | C: {active_bar['close']:.2f} (Vol: {active_bar['volume']})"
     else:
-        bar_str = "O: 18500.00 | H: 18535.50 | L: 18495.00 | C: 18532.50"
+        bar_str = "No active candle in memory (Awaiting RTH session)"
+
+    latency_display = "<b class='mono' style='color: #34D399;'>Connected (Live)</b>" if feed_connected else "<b class='mono' style='color: #64748B;'>Disconnected</b>"
+    touch_scanner_display = "<b>Sub-Second Real-Time Check (Armed)</b>" if feed_connected else "<b>Standby</b>"
 
     st.markdown(f"""
     <div class="telemetry-box">
         <div class="telemetry-row">
             <div><span style="color: #64748B;">Last Tick Price:</span> <b class="mono" style="color: #F8FAFC;">{last_price_str}</b></div>
-            <div><span style="color: #64748B;">Tick Latency:</span> <b class="mono" style="color: #34D399;">12 ms</b></div>
+            <div><span style="color: #64748B;">Feed Health:</span> {latency_display}</div>
         </div>
         <div class="telemetry-row">
             <div style="font-size: 11px;"><span style="color: #64748B;">Active 1m Candle:</span> <b class="mono" style="color: #38BDF8;">{bar_str}</b></div>
         </div>
         <div style="font-size: 11px; color: #94A3B8; margin-top: 4px;">
-            <span>● 50% Touch Scanner: <b>Sub-Second Real-Time Check</b></span>
+            <span>● 50% Touch Scanner: {touch_scanner_display}</span>
         </div>
     </div>
     """, unsafe_allow_html=True)
 
-    # Actions: Connect / Disconnect + Live Tick Simulator
+    # Feed Connection Controls (Real Gateway Actions)
     c_btn1, c_btn2 = st.columns(2)
     with c_btn1:
         if st.button("🔗 Connect Feed" if not feed_connected else "🔄 Reconnect", use_container_width=True):
             set_system_state("data_feed_connected", "1")
             set_system_state("data_feed_provider", provider_choice)
             set_system_state("data_feed_asset", asset_choice)
+            if api_key_input:
+                set_system_state("data_feed_key", api_key_input)
             log_temp_event("FEED", f"Connected to {provider_choice} for {asset_choice}. WebSocket active.", "INFO")
             st.success("✅ Real-time CME tick stream connected.")
             st.rerun()
     with c_btn2:
-        if st.button("Disconnect", use_container_width=True, disabled=not feed_connected):
+        if st.button("⏹ Disconnect", use_container_width=True, disabled=not feed_connected):
             set_system_state("data_feed_connected", "0")
-            log_temp_event("FEED", "Data feed disconnected by user.", "WARN")
+            log_temp_event("FEED", "Market feed disconnected by user.", "WARN")
             st.info("Market feed disconnected.")
             st.rerun()
-
-    # Interactive Verification: Stream Live Test Ticks
-    if st.button("⚡ Verify Tick-Level 50% Touch Execution", use_container_width=True):
-        strat = st.session_state.strategy
-        strat.reset_at_open(18500.0, 18500.0)
-        strat.bull_state = 3
-        strat.active_bias = "BULL"
-        strat.bull_anchor = 18500.0
-        strat.bull_extreme = 18550.0 # 50% line is 18525.0
-
-        log_temp_event("STRATEGY", "Testing 50% Touch: 09:30 AM reset initialized.", "STATE")
-        log_temp_event("STRATEGY", "Bullish Wave 1 set: Anchor 18,500.00 -> High 18,550.00 (50% Equilibrium = 18,525.00)", "STATE")
-
-        # Feed 3 real-time ticks
-        now = datetime.datetime.now()
-        t1 = tick_engine.on_tick(now, 18532.0, 5) # Bar update
-        log_temp_event("TICK", "Tick received: 18,532.00 | Vol: 5 | Active 1m bar: H 18,550.00, L 18,500.00", "TICK")
-
-        t2 = tick_engine.on_tick(now, 18524.75, 8) # Touch 50% line -> Instant entry on tick!
-        log_temp_event("TOUCH", "⚡ 50% TOUCH DETECTED! Price 18,524.75 touched equilibrium 18,525.00 intra-bar!", "SIGNAL")
-        log_temp_event("ORDER", "Dispatched BUY 3 MNQ @ 18,525.00 to [Topstep_100k_Alpha] & [Apex_100k_Funded]", "ORDER")
-        log_temp_event("RISK", "Dynamic SL set @ 18,499.07 | TP @ 18,550.00 | Midpoint Trailing @ 18,537.50", "RISK")
-
-        t3 = tick_engine.on_tick(now, 18550.25, 10) # Reaches TP -> Instant exit on tick!
-        log_temp_event("TICK", "Tick received: 18,550.25 | Crossed midpoint -> Trailing SL engaged to 18,524.75", "RISK")
-        log_temp_event("EXIT", "🎯 Take Profit REACHED @ 18,550.25! Fired exit TP_TICK (+25.00 pts / +$150.00 USD/account)", "ORDER")
-
-        st.success("🎯 Tick Verification Complete! Entry fired on tick 18,524.75; TP exit fired on tick 18,550.25 across all connected accounts.")
-        st.rerun()
 
 
 # ================= CARD 2: TRADING ACCOUNT API =================
 with col_trade:
     # Card Header
-    trade_badge = f'<span class="status-pill status-emerald">{active_accounts_count} ARMED</span>'
+    trade_badge = f'<span class="status-pill status-emerald">{active_accounts_count} ARMED</span>' if active_accounts_count > 0 else '<span class="status-pill status-slate">0 ARMED</span>'
     st.markdown(f"""
     <div class="card-heading-box">
         <div>
@@ -628,28 +604,33 @@ with col_trade:
             log_temp_event("ROUTER", f"Account [{selected_manage_acc}] removed from execution roster", "WARN")
             st.rerun()
     else:
-        st.info("No trading accounts connected yet.")
+        st.markdown("""
+        <div style="background: rgba(255, 255, 255, 0.02); border: 1px dashed rgba(255, 255, 255, 0.08); border-radius: 10px; padding: 20px; text-align: center; margin-bottom: 14px;">
+            <div style="color: #94A3B8; font-size: 13px; font-weight: 600; margin-bottom: 4px;">Zero Accounts Linked</div>
+            <div style="color: #64748B; font-size: 11px;">Link your live Topstep, Apex, or Tradovate credentials below to arm execution.</div>
+        </div>
+        """, unsafe_allow_html=True)
 
-    # Link New Trading Account Form
-    with st.expander("➕ Link New Trading Account", expanded=False):
-        with st.form("link_trading_acc_form"):
+    # Link New Trading Account Form (auto-expanded if empty)
+    with st.expander("➕ Link New Trading Account", expanded=accounts_df.empty):
+        with st.form("link_trading_acc_form", clear_on_submit=True):
             c_f1, c_f2 = st.columns(2)
-            new_acc_name = c_f1.text_input("Account Identifier", placeholder="Topstep_100k_Alpha_02")
+            new_acc_name = c_f1.text_input("Account Identifier", placeholder="e.g. Topstep_150k_Live")
             new_broker = c_f2.selectbox("Execution Broker / Feed", [
                 "Topstep (Tradovate)", "Apex Trader Funding", "Tradovate Live API", "NinjaTrader 8 (Local)", "Interactive Brokers"
             ])
 
             c_f3, c_f4 = st.columns(2)
-            new_key = c_f3.text_input("API Key / Username", type="password")
-            new_sec = c_f4.text_input("API Secret / Password", type="password")
+            new_key = c_f3.text_input("API Key / Username", type="password", placeholder="API Key or Username")
+            new_sec = c_f4.text_input("API Secret / Password", type="password", placeholder="API Secret or Password")
 
             new_qty = st.slider("Position Size (Micro Contracts)", min_value=1, max_value=20, value=3)
 
             if st.form_submit_button("Link Account", use_container_width=True):
-                if new_acc_name and new_key:
-                    add_account(new_acc_name, new_broker, new_key, new_sec, new_qty)
-                    log_temp_event("ROUTER", f"Linked new account [{new_acc_name}] ({new_broker}) with {new_qty} micros", "INFO")
-                    st.success(f"Trading Account '{new_acc_name}' linked.")
+                if new_acc_name.strip() and new_key.strip():
+                    add_account(new_acc_name.strip(), new_broker, new_key.strip(), new_sec.strip(), new_qty)
+                    log_temp_event("ROUTER", f"Linked live account [{new_acc_name.strip()}] ({new_broker}) with {new_qty} micros", "INFO")
+                    st.success(f"Trading Account '{new_acc_name.strip()}' linked.")
                     st.rerun()
                 else:
                     st.error("Account Identifier and API Key are required.")
@@ -676,8 +657,8 @@ with c_unveil:
 if st.session_state.get("show_temp_logs", False):
     total_logs = len(st.session_state.get("temp_logs", []))
 
-    # Action Toolbar above terminal
-    c_bar_f, c_bar_inj, c_bar_clr = st.columns([2, 1.2, 1])
+    # Action Toolbar above terminal: Filter + Clear
+    c_bar_f, c_bar_clr = st.columns([3, 1])
     with c_bar_f:
         st.markdown("<div class='unveil-marker'></div>", unsafe_allow_html=True)
         log_filter = st.selectbox(
@@ -685,15 +666,6 @@ if st.session_state.get("show_temp_logs", False):
             ["All Activity", "Ticks & Touches", "Orders & Exits", "Strategy & Risk", "System & Feeds"],
             label_visibility="collapsed"
         )
-    with c_bar_inj:
-        st.markdown("<div class='unveil-marker'></div>", unsafe_allow_html=True)
-        if st.button("⚡ Inject Live Tick", use_container_width=True, help="Simulate an incoming CME tick"):
-            now = datetime.datetime.now()
-            t_price = 18530.0 + round((now.microsecond % 40) * 0.25, 2)
-            t_vol = int((now.microsecond % 8) + 1)
-            tick_engine.on_tick(now, t_price, t_vol)
-            log_temp_event("TICK", f"Live tick ingested: MNQ @ {t_price:.2f} | Size: {t_vol} | Chicago CME Gateway ping: 11ms", "TICK")
-            st.rerun()
     with c_bar_clr:
         st.markdown("<div class='unveil-marker'></div>", unsafe_allow_html=True)
         if st.button("🧹 Clear Logs", use_container_width=True):
@@ -714,10 +686,10 @@ if st.session_state.get("show_temp_logs", False):
         filtered_logs = raw_logs
 
     # Build Terminal HTML
-    log_rows_html = ""
     if not filtered_logs:
-        log_rows_html = "<div style='color: #64748B; padding: 12px 0;'>No temporary log events recorded for this category.</div>"
+        log_rows_html = "<div style='color: #64748B; padding: 24px 0; text-align: center; font-size: 12px;'>No runtime logs recorded yet. System is fresh on standby.</div>"
     else:
+        log_rows_html = ""
         for log in filtered_logs:
             cat = log.get("category", "INFO").upper()
             tag_class = "tag-system"
@@ -766,6 +738,9 @@ if st.session_state.get("show_temp_logs", False):
                 use_container_width=True,
                 hide_index=True
             )
+    else:
+        with st.expander("📁 Persistent SQLite Execution Records (0 Fills Stored)", expanded=False):
+            st.markdown("<div style='color: #64748B; font-size: 12px; padding: 8px 0;'>No trade executions logged in SQLite yet. Clean database state.</div>", unsafe_allow_html=True)
 
 # ----------------- CENTERED MINIMAL FOOTER -----------------
 st.markdown("""

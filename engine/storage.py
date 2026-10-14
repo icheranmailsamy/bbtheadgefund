@@ -3,7 +3,7 @@ import pandas as pd
 import datetime
 import os
 
-DB_PATH = os.path.join(os.path.dirname(__file__), "../trades.db")
+DB_PATH = os.environ.get("TRADES_DB_PATH", os.path.join(os.path.dirname(__file__), "../trades.db"))
 
 def get_connection():
     return sqlite3.connect(DB_PATH, check_same_thread=False)
