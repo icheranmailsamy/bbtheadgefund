@@ -159,7 +159,7 @@ namespace NinjaTrader.NinjaScript.Strategies
                 if (activeBias == "BEAR") activeBias = null;
             }
 
-            double minRange = Close[0] * 0.0004;
+            double minRange = 2.0; // 2.0 points = 8 ticks minimum requirement
             double tick = TickSize;
 
             // Bullish State Machine

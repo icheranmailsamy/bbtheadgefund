@@ -67,7 +67,7 @@ class PureRTHEquilibriumStrategyEngine:
             self.bear_extreme = self.day_high
             if self.active_bias == "BEAR": self.active_bias = None
 
-        min_range = close_p * 0.0004
+        min_range = 2.0  # 2.0 points = 8 ticks minimum requirement
         signal = None
 
         # Bullish Wave Logic
