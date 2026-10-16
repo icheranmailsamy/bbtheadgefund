@@ -6,9 +6,19 @@ class RiskManagementEngine:
     - Ambiguous Single-Candle SL+TP = Strict Loss
     - EOD Mandatory Liquidation (15:59 EST)
     """
+    INSTRUMENT_SPECS = {
+        "MNQ": {"point_value": 2.00, "tick_size": 0.25, "tick_value": 0.50},
+        "NQ":  {"point_value": 20.00, "tick_size": 0.25, "tick_value": 5.00},
+        "MES": {"point_value": 5.00, "tick_size": 0.25, "tick_value": 1.25},
+        "ES":  {"point_value": 50.00, "tick_size": 0.25, "tick_value": 12.50},
+    }
+
     def __init__(self, asset="MNQ"):
-        self.asset = asset
-        self.pt_value = 2.00 if asset == "MNQ" else 5.00
+        self.asset = asset.upper()
+        spec = self.INSTRUMENT_SPECS.get(self.asset, self.INSTRUMENT_SPECS["MNQ"])
+        self.pt_value = spec["point_value"]
+        self.tick_size = spec["tick_size"]
+        self.tick_value = spec["tick_value"]
         
         self.in_trade = False
         self.side = None

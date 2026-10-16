@@ -6,9 +6,17 @@ class PureRTHEquilibriumStrategyEngine:
     - 50% Equilibrium Touch
     - Recency Override
     """
+    INSTRUMENT_SPECS = {
+        "MNQ": {"point_value": 2.00, "tick_size": 0.25, "tick_value": 0.50},
+        "NQ":  {"point_value": 20.00, "tick_size": 0.25, "tick_value": 5.00},
+        "MES": {"point_value": 5.00, "tick_size": 0.25, "tick_value": 1.25},
+        "ES":  {"point_value": 50.00, "tick_size": 0.25, "tick_value": 12.50},
+    }
+
     def __init__(self, asset="MNQ", slippage_ticks=2):
-        self.asset = asset
-        self.tick_size = 0.25
+        self.asset = asset.upper()
+        spec = self.INSTRUMENT_SPECS.get(self.asset, self.INSTRUMENT_SPECS["MNQ"])
+        self.tick_size = spec["tick_size"]
         self.slippage_penalty = slippage_ticks * self.tick_size
         
         self.day_high = 0.0
