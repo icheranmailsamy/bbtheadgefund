@@ -67,14 +67,14 @@ class PureRTHEquilibriumStrategyEngine:
             self.bear_extreme = self.day_high
             if self.active_bias == "BEAR": self.active_bias = None
 
-        min_range = 2.0  # 2.0 points = 8 ticks minimum requirement
+        min_range = 8.0  # 8.0 points = 32 ticks minimum setup range (trade gate only)
         signal = None
 
-        # Bullish Wave Logic
+        # Bullish Wave Logic (Pure Market Structure)
         if self.bull_state == 1:
             if high_p > self.bull_extreme: self.bull_extreme = high_p
             bull_50 = self.bull_extreme - 0.50 * (self.bull_extreme - self.bull_anchor)
-            if (self.bull_extreme - self.bull_anchor) >= min_range and low_p <= bull_50:
+            if (self.bull_extreme - self.bull_anchor) > self.tick_size and low_p <= bull_50:
                 self.bull_state = 2
                 self.bull_lowest_w1 = low_p
         elif self.bull_state == 2:
@@ -94,22 +94,26 @@ class PureRTHEquilibriumStrategyEngine:
             else:
                 if high_p > self.bull_extreme: self.bull_extreme = high_p
                 bull_50 = self.bull_extreme - 0.50 * (self.bull_extreme - self.bull_anchor)
-                if is_entry_allowed and self.active_bias == "BULL" and (self.bull_extreme - self.bull_anchor) >= min_range and low_p <= bull_50:
-                    buffer = close_p * 0.00005
-                    signal = {
-                        'side': 'BUY',
-                        'entry_price': bull_50 + self.slippage_penalty,
-                        'sl_price': self.bull_anchor - buffer,
-                        'tp_price': self.bull_extreme,
-                        'trade_50_level': bull_50,
-                        'extreme_low': low_p
-                    }
 
-        # Bearish Wave Logic
+                # Trade Execution Gate: min_range strictly decides whether to place the order
+                trade_range = self.bull_extreme - self.bull_anchor
+                if is_entry_allowed and self.active_bias == "BULL" and low_p <= bull_50:
+                    if trade_range >= min_range:
+                        buffer = close_p * 0.00005
+                        signal = {
+                            'side': 'BUY',
+                            'entry_price': bull_50 + self.slippage_penalty,
+                            'sl_price': self.bull_anchor - buffer,
+                            'tp_price': self.bull_extreme,
+                            'trade_50_level': bull_50,
+                            'extreme_low': low_p
+                        }
+
+        # Bearish Wave Logic (Pure Market Structure)
         if self.bear_state == 1:
             if low_p < self.bear_extreme: self.bear_extreme = low_p
             bear_50 = self.bear_extreme + 0.50 * (self.bear_anchor - self.bear_extreme)
-            if (self.bear_anchor - self.bear_extreme) >= min_range and high_p >= bear_50:
+            if (self.bear_anchor - self.bear_extreme) > self.tick_size and high_p >= bear_50:
                 self.bear_state = 2
                 self.bear_highest_w1 = high_p
         elif self.bear_state == 2:
@@ -129,16 +133,20 @@ class PureRTHEquilibriumStrategyEngine:
             else:
                 if low_p < self.bear_extreme: self.bear_extreme = low_p
                 bear_50 = self.bear_extreme + 0.50 * (self.bear_anchor - self.bear_extreme)
-                if is_entry_allowed and self.active_bias == "BEAR" and (self.bear_anchor - self.bear_extreme) >= min_range and high_p >= bear_50:
-                    buffer = close_p * 0.00005
-                    signal = {
-                        'side': 'SELL',
-                        'entry_price': bear_50 - self.slippage_penalty,
-                        'sl_price': self.bear_anchor + buffer,
-                        'tp_price': self.bear_extreme,
-                        'trade_50_level': bear_50,
-                        'extreme_high': high_p
-                    }
+
+                # Trade Execution Gate: min_range strictly decides whether to place the order
+                trade_range = self.bear_anchor - self.bear_extreme
+                if is_entry_allowed and self.active_bias == "BEAR" and high_p >= bear_50:
+                    if trade_range >= min_range:
+                        buffer = close_p * 0.00005
+                        signal = {
+                            'side': 'SELL',
+                            'entry_price': bear_50 - self.slippage_penalty,
+                            'sl_price': self.bear_anchor + buffer,
+                            'tp_price': self.bear_extreme,
+                            'trade_50_level': bear_50,
+                            'extreme_high': high_p
+                        }
 
         return signal
 

@@ -159,15 +159,15 @@ namespace NinjaTrader.NinjaScript.Strategies
                 if (activeBias == "BEAR") activeBias = null;
             }
 
-            double minRange = 2.0; // 2.0 points = 8 ticks minimum requirement
+            double minRange = 8.0; // 8.0 points = 32 ticks minimum setup range (trade gate only)
             double tick = TickSize;
 
-            // Bullish State Machine
+            // Bullish State Machine (Pure Market Structure)
             if (bullState == 1)
             {
                 if (High[0] > bullExtreme) bullExtreme = High[0];
                 double bull50 = bullExtreme - 0.50 * (bullExtreme - bullAnchor);
-                if ((bullExtreme - bullAnchor) >= minRange && Low[0] <= bull50)
+                if ((bullExtreme - bullAnchor) > tick && Low[0] <= bull50)
                 {
                     bullState = 2;
                     bullLowestW1 = Low[0];
@@ -201,29 +201,33 @@ namespace NinjaTrader.NinjaScript.Strategies
                     if (High[0] > bullExtreme) bullExtreme = High[0];
                     double bull50 = bullExtreme - 0.50 * (bullExtreme - bullAnchor);
 
-                    // Entry Condition
-                    if (Position.MarketPosition == MarketPosition.Flat && activeBias == "BULL" && (bullExtreme - bullAnchor) >= minRange && Low[0] <= bull50)
+                    // Trade Execution Gate
+                    double tradeRange = bullExtreme - bullAnchor;
+                    if (Position.MarketPosition == MarketPosition.Flat && activeBias == "BULL" && Low[0] <= bull50)
                     {
-                        trade50Level = bull50;
-                        entryPrice = bull50 + (SlippageTicks * tick);
-                        currentSl = bullAnchor - (Close[0] * 0.00005);
-                        currentTp = bullExtreme;
-                        lowestInTrade = Low[0];
-                        slMoved = false;
+                        if (tradeRange >= minRange)
+                        {
+                            trade50Level = bull50;
+                            entryPrice = bull50 + (SlippageTicks * tick);
+                            currentSl = bullAnchor - (Close[0] * 0.00005);
+                            currentTp = bullExtreme;
+                            lowestInTrade = Low[0];
+                            slMoved = false;
 
-                        EnterLong(Contracts, "50_Equilibrium_Long");
-                        SetStopLoss("50_Equilibrium_Long", CalculationMode.Price, currentSl, false);
-                        SetProfitTarget("50_Equilibrium_Long", CalculationMode.Price, currentTp);
+                            EnterLong(Contracts, "50_Equilibrium_Long");
+                            SetStopLoss("50_Equilibrium_Long", CalculationMode.Price, currentSl, false);
+                            SetProfitTarget("50_Equilibrium_Long", CalculationMode.Price, currentTp);
+                        }
                     }
                 }
             }
 
-            // Bearish State Machine
+            // Bearish State Machine (Pure Market Structure)
             if (bearState == 1)
             {
                 if (Low[0] < bearExtreme) bearExtreme = Low[0];
                 double bear50 = bearExtreme + 0.50 * (bearAnchor - bearExtreme);
-                if ((bearAnchor - bearExtreme) >= minRange && High[0] >= bear50)
+                if ((bearAnchor - bearExtreme) > tick && High[0] >= bear50)
                 {
                     bearState = 2;
                     bearHighestW1 = High[0];
@@ -257,19 +261,23 @@ namespace NinjaTrader.NinjaScript.Strategies
                     if (Low[0] < bearExtreme) bearExtreme = Low[0];
                     double bear50 = bearExtreme + 0.50 * (bearAnchor - bearExtreme);
 
-                    // Entry Condition
-                    if (Position.MarketPosition == MarketPosition.Flat && activeBias == "BEAR" && (bearAnchor - bearExtreme) >= minRange && High[0] >= bear50)
+                    // Trade Execution Gate
+                    double tradeRange = bearAnchor - bearExtreme;
+                    if (Position.MarketPosition == MarketPosition.Flat && activeBias == "BEAR" && High[0] >= bear50)
                     {
-                        trade50Level = bear50;
-                        entryPrice = bear50 - (SlippageTicks * tick);
-                        currentSl = bearAnchor + (Close[0] * 0.00005);
-                        currentTp = bearExtreme;
-                        highestInTrade = High[0];
-                        slMoved = false;
+                        if (tradeRange >= minRange)
+                        {
+                            trade50Level = bear50;
+                            entryPrice = bear50 - (SlippageTicks * tick);
+                            currentSl = bearAnchor + (Close[0] * 0.00005);
+                            currentTp = bearExtreme;
+                            highestInTrade = High[0];
+                            slMoved = false;
 
-                        EnterShort(Contracts, "50_Equilibrium_Short");
-                        SetStopLoss("50_Equilibrium_Short", CalculationMode.Price, currentSl, false);
-                        SetProfitTarget("50_Equilibrium_Short", CalculationMode.Price, currentTp);
+                            EnterShort(Contracts, "50_Equilibrium_Short");
+                            SetStopLoss("50_Equilibrium_Short", CalculationMode.Price, currentSl, false);
+                            SetProfitTarget("50_Equilibrium_Short", CalculationMode.Price, currentTp);
+                        }
                     }
                 }
             }
