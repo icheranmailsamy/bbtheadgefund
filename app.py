@@ -12,10 +12,24 @@ from engine.risk_engine import RiskManagementEngine
 from engine.broker_router import BrokerMultiAccountRouter
 from engine.tick_engine import RealtimeTickAggregatorEngine
 
-# ----------------- PAGE CONFIGURATION -----------------
+# ----------------- PAGE CONFIGURATION & ASSETS -----------------
+ASSETS_DIR = os.path.join(os.path.dirname(__file__), "assets")
+FAVICON_PATH = os.path.join(ASSETS_DIR, "source_pngs", "image2_white_on_black.png")
+if not os.path.exists(FAVICON_PATH):
+    FAVICON_PATH = os.path.join(ASSETS_DIR, "bolt_white_transparent.svg")
+
+LOGO_SVG_PATH = os.path.join(ASSETS_DIR, "bolt_white_transparent.svg")
+LOGO_SVG_INLINE = ""
+if os.path.exists(LOGO_SVG_PATH):
+    try:
+        with open(LOGO_SVG_PATH, "r") as f:
+            LOGO_SVG_INLINE = f.read().strip()
+    except Exception:
+        LOGO_SVG_INLINE = ""
+
 st.set_page_config(
     page_title="Equilibrium // Gateway",
-    page_icon="⚡",
+    page_icon=FAVICON_PATH if os.path.exists(FAVICON_PATH) else "⚡",
     layout="wide",
     initial_sidebar_state="collapsed"
 )
@@ -433,9 +447,15 @@ if "show_temp_logs" not in st.session_state:
     st.session_state.show_temp_logs = False
 
 # ----------------- CENTERED HEADER -----------------
+logo_header_markup = f'<div style="width: 22px; height: 22px; display: inline-block; vertical-align: middle; margin-right: 6px;">{LOGO_SVG_INLINE}</div>' if LOGO_SVG_INLINE else '⚡ '
+
 st.markdown(f"""
 <div class="header-centered">
-    <div class="header-pill">⚡ Equilibrium Architecture</div>
+    <div style="display: flex; justify-content: center; align-items: center; margin-bottom: 8px;">
+        <div class="header-pill" style="display: inline-flex; align-items: center; gap: 6px; margin-bottom: 0;">
+            {logo_header_markup} Equilibrium Architecture
+        </div>
+    </div>
     <div class="header-title">Institutional Trading Gateway</div>
     <div class="header-subtitle">
         Market data is ingested <b>every single tick</b>, building real-time 1-minute bars with <b>instant intra-candle 50% equilibrium touch execution</b>.
