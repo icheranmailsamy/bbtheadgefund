@@ -66,20 +66,13 @@ class RiskManagementEngine:
 
         if self.side == 'BUY':
             self.lowest_in_trade = min(self.lowest_in_trade, low_p)
-            both_hit = (low_p <= self.sl_price) and (high_p >= self.tp_price)
-
-            if both_hit:
-                # USER RULE: Single candle SL+TP is strictly a LOSS
-                pts = self.sl_price - self.entry_price
-                exit_event = {'exit_type': 'SL_AMBIGUOUS_BAR', 'exit_price': self.sl_price, 'pnl_points': pts}
+            if high_p >= self.tp_price:
+                pts = self.tp_price - self.entry_price
+                exit_event = {'exit_type': 'TP', 'exit_price': self.tp_price, 'pnl_points': pts}
                 self.in_trade = False
             elif low_p <= self.sl_price:
                 pts = self.sl_price - self.entry_price
                 exit_event = {'exit_type': 'SL', 'exit_price': self.sl_price, 'pnl_points': pts}
-                self.in_trade = False
-            elif high_p >= self.tp_price:
-                pts = self.tp_price - self.entry_price
-                exit_event = {'exit_type': 'TP', 'exit_price': self.tp_price, 'pnl_points': pts}
                 self.in_trade = False
             else:
                 # Dynamic Trailing Stop Trigger
@@ -91,20 +84,13 @@ class RiskManagementEngine:
 
         elif self.side == 'SELL':
             self.highest_in_trade = max(self.highest_in_trade, high_p)
-            both_hit = (high_p >= self.sl_price) and (low_p <= self.tp_price)
-
-            if both_hit:
-                # USER RULE: Single candle SL+TP is strictly a LOSS
-                pts = self.entry_price - self.sl_price
-                exit_event = {'exit_type': 'SL_AMBIGUOUS_BAR', 'exit_price': self.sl_price, 'pnl_points': pts}
+            if low_p <= self.tp_price:
+                pts = self.entry_price - self.tp_price
+                exit_event = {'exit_type': 'TP', 'exit_price': self.tp_price, 'pnl_points': pts}
                 self.in_trade = False
             elif high_p >= self.sl_price:
                 pts = self.entry_price - self.sl_price
                 exit_event = {'exit_type': 'SL', 'exit_price': self.sl_price, 'pnl_points': pts}
-                self.in_trade = False
-            elif low_p <= self.tp_price:
-                pts = self.entry_price - self.tp_price
-                exit_event = {'exit_type': 'TP', 'exit_price': self.tp_price, 'pnl_points': pts}
                 self.in_trade = False
             else:
                 trigger = self.trade_50_level - 0.50 * (self.trade_50_level - self.tp_price)
