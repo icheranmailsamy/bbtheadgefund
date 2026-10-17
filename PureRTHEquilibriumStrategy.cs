@@ -159,7 +159,7 @@ namespace NinjaTrader.NinjaScript.Strategies
                 if (activeBias == "BEAR") activeBias = null;
             }
 
-            double minRange = 2.0; // 2.0 points = 8 ticks minimum setup range (trade gate only)
+            double minRange = 5.0; // 5.0 points = 20 ticks minimum setup range (trade gate only)
             double tick = TickSize;
 
             // Bullish State Machine (Pure Market Structure)
