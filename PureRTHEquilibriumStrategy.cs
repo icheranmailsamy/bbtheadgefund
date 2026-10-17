@@ -110,15 +110,15 @@ namespace NinjaTrader.NinjaScript.Strategies
 
             int time = ToTime(Time[0]);
 
-            // 1. HARD FLATTEN AT 15:59 EST (Zero Overnight Holding)
-            if (time >= 155900)
+            // 1. HARD FLATTEN AT 11:30 AM EST SHARP (The Morning Sniper Final Model)
+            if (time >= 113000)
             {
                 if (Position.MarketPosition != MarketPosition.Flat)
                 {
                     if (Position.MarketPosition == MarketPosition.Long)
-                        ExitLong("Flatten_EOD");
+                        ExitLong("Flatten_1130");
                     else if (Position.MarketPosition == MarketPosition.Short)
-                        ExitShort("Flatten_EOD");
+                        ExitShort("Flatten_1130");
                 }
                 ClearState();
                 return;
@@ -142,11 +142,11 @@ namespace NinjaTrader.NinjaScript.Strategies
                 return;
             }
 
-            // Skip everything outside RTH (09:30 - 15:55 EST)
-            if (time < 093000 || time > 155500)
+            // Skip everything outside Morning Sniper window (09:30 - 11:30 EST)
+            if (time < 093000 || time >= 113000)
                 return;
 
-            bool isEntryAllowed = (time >= 093000 && time <= 113000); // Morning Sniper Window: 09:30 - 11:30 AM EST
+            bool isEntryAllowed = (time >= 093000 && time < 113000); // Morning Sniper Window: 09:30 - 11:30 AM EST
 
             // Update session extremes
             if (Low[0] < dayLow)
