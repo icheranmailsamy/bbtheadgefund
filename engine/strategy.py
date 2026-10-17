@@ -67,7 +67,7 @@ class PureRTHEquilibriumStrategyEngine:
             self.bear_extreme = self.day_high
             if self.active_bias == "BEAR": self.active_bias = None
 
-        min_range = 8.0  # 8.0 points = 32 ticks minimum setup range (trade gate only)
+        min_range = 2.0  # 2.0 points = 8 ticks minimum setup range (trade gate only)
         signal = None
 
         # Bullish Wave Logic (Pure Market Structure)
