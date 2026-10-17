@@ -166,7 +166,7 @@ class RealtimeTickAggregatorEngine:
         if not is_allowed:
             return None
 
-        min_range = 5.0  # 5.0 points = 20 ticks minimum setup range (trade gate only)
+        min_range = 8.0  # 8.0 points = 32 ticks minimum setup range (trade gate only)
 
         # Bullish Wave State 3: Check immediate tick touch of 50% Equilibrium
         if self.strategy.bull_state == 3 and self.strategy.active_bias == "BULL":
