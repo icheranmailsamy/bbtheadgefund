@@ -32,11 +32,13 @@ namespace NinjaTrader.NinjaScript.Strategies
         private double bullAnchor;
         private double bullExtreme;
         private double bullLowestW1;
+        private double bullRetraceLow;
 
         private int bearState;
         private double bearAnchor;
         private double bearExtreme;
         private double bearHighestW1;
+        private double bearRetraceHigh;
 
         private string activeBias;
         private double trade50Level;
@@ -95,6 +97,8 @@ namespace NinjaTrader.NinjaScript.Strategies
             dayLow = double.MaxValue;
             bullState = 0;
             bearState = 0;
+            bullRetraceLow = 0;
+            bearRetraceHigh = 0;
             activeBias = null;
             slMoved = false;
         }
@@ -128,9 +132,11 @@ namespace NinjaTrader.NinjaScript.Strategies
                 bullState = 1;
                 bullAnchor = dayLow;
                 bullExtreme = dayLow;
+                bullRetraceLow = dayLow;
                 bearState = 1;
                 bearAnchor = dayHigh;
                 bearExtreme = dayHigh;
+                bearRetraceHigh = dayHigh;
                 activeBias = null;
                 slMoved = false;
                 return;
@@ -191,6 +197,7 @@ namespace NinjaTrader.NinjaScript.Strategies
             }
             else if (bullState == 3)
             {
+                // Wave 2+ Expansion Phase: tracking peak
                 if (Low[0] < bullAnchor)
                 {
                     bullState = 0;
@@ -201,11 +208,14 @@ namespace NinjaTrader.NinjaScript.Strategies
                     if (High[0] > bullExtreme) bullExtreme = High[0];
                     double bull50 = bullExtreme - 0.50 * (bullExtreme - bullAnchor);
 
-                    // Trade Execution Gate
-                    double tradeRange = bullExtreme - bullAnchor;
-                    if (Position.MarketPosition == MarketPosition.Flat && activeBias == "BULL" && Low[0] <= bull50)
+                    if ((bullExtreme - bullAnchor) > tick && Low[0] <= bull50)
                     {
-                        if (tradeRange >= minRange)
+                        bullState = 4;
+                        bullRetraceLow = Low[0];
+                        double tradeRange = bullExtreme - bullAnchor;
+
+                        // Trade Execution Gate
+                        if (Position.MarketPosition == MarketPosition.Flat && activeBias == "BULL" && tradeRange >= minRange)
                         {
                             trade50Level = bull50;
                             entryPrice = bull50 + (SlippageTicks * tick);
@@ -219,6 +229,24 @@ namespace NinjaTrader.NinjaScript.Strategies
                             SetProfitTarget("50_Equilibrium_Long", CalculationMode.Price, currentTp);
                         }
                     }
+                }
+            }
+            else if (bullState == 4)
+            {
+                // Wave 2+ Retracement Phase: tracking pullback low
+                bullRetraceLow = Math.Min(bullRetraceLow, Low[0]);
+                if (Low[0] < bullAnchor)
+                {
+                    bullState = 0;
+                    if (activeBias == "BULL") activeBias = null;
+                }
+                else if (High[0] >= bullExtreme)
+                {
+                    // Cycle Completed! Move and start measuring next wave regardless of trade
+                    bullState = 3;
+                    bullAnchor = bullRetraceLow;
+                    bullExtreme = High[0];
+                    activeBias = "BULL";
                 }
             }
 
@@ -251,6 +279,7 @@ namespace NinjaTrader.NinjaScript.Strategies
             }
             else if (bearState == 3)
             {
+                // Wave 2+ Expansion Phase: tracking valley
                 if (High[0] > bearAnchor)
                 {
                     bearState = 0;
@@ -261,11 +290,14 @@ namespace NinjaTrader.NinjaScript.Strategies
                     if (Low[0] < bearExtreme) bearExtreme = Low[0];
                     double bear50 = bearExtreme + 0.50 * (bearAnchor - bearExtreme);
 
-                    // Trade Execution Gate
-                    double tradeRange = bearAnchor - bearExtreme;
-                    if (Position.MarketPosition == MarketPosition.Flat && activeBias == "BEAR" && High[0] >= bear50)
+                    if ((bearAnchor - bearExtreme) > tick && High[0] >= bear50)
                     {
-                        if (tradeRange >= minRange)
+                        bearState = 4;
+                        bearRetraceHigh = High[0];
+                        double tradeRange = bearAnchor - bearExtreme;
+
+                        // Trade Execution Gate
+                        if (Position.MarketPosition == MarketPosition.Flat && activeBias == "BEAR" && tradeRange >= minRange)
                         {
                             trade50Level = bear50;
                             entryPrice = bear50 - (SlippageTicks * tick);
@@ -279,6 +311,24 @@ namespace NinjaTrader.NinjaScript.Strategies
                             SetProfitTarget("50_Equilibrium_Short", CalculationMode.Price, currentTp);
                         }
                     }
+                }
+            }
+            else if (bearState == 4)
+            {
+                // Wave 2+ Retracement Phase: tracking pullback high
+                bearRetraceHigh = Math.Max(bearRetraceHigh, High[0]);
+                if (High[0] > bearAnchor)
+                {
+                    bearState = 0;
+                    if (activeBias == "BEAR") activeBias = null;
+                }
+                else if (Low[0] <= bearExtreme)
+                {
+                    // Cycle Completed! Move and start measuring next wave regardless of trade
+                    bearState = 3;
+                    bearAnchor = bearRetraceHigh;
+                    bearExtreme = Low[0];
+                    activeBias = "BEAR";
                 }
             }
 

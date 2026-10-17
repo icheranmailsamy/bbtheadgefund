@@ -166,13 +166,16 @@ class RealtimeTickAggregatorEngine:
         if not is_allowed:
             return None
 
-        min_range = price * 0.0004
+        min_range = 5.0  # 5.0 points = 20 ticks minimum setup range (trade gate only)
 
         # Bullish Wave State 3: Check immediate tick touch of 50% Equilibrium
         if self.strategy.bull_state == 3 and self.strategy.active_bias == "BULL":
-            if (self.strategy.bull_extreme - self.strategy.bull_anchor) >= min_range:
-                bull_50 = self.strategy.bull_extreme - 0.50 * (self.strategy.bull_extreme - self.strategy.bull_anchor)
-                if price <= bull_50:
+            bull_50 = self.strategy.bull_extreme - 0.50 * (self.strategy.bull_extreme - self.strategy.bull_anchor)
+            if price <= bull_50:
+                self.strategy.bull_state = 4
+                self.strategy.bull_retrace_low = price
+                trade_range = self.strategy.bull_extreme - self.strategy.bull_anchor
+                if trade_range >= min_range:
                     buffer = price * 0.00005
                     signal = {
                         'side': 'BUY',
@@ -189,9 +192,12 @@ class RealtimeTickAggregatorEngine:
 
         # Bearish Wave State 3: Check immediate tick touch of 50% Equilibrium
         if self.strategy.bear_state == 3 and self.strategy.active_bias == "BEAR":
-            if (self.strategy.bear_anchor - self.strategy.bear_extreme) >= min_range:
-                bear_50 = self.strategy.bear_extreme + 0.50 * (self.strategy.bear_anchor - self.strategy.bear_extreme)
-                if price >= bear_50:
+            bear_50 = self.strategy.bear_extreme + 0.50 * (self.strategy.bear_anchor - self.strategy.bear_extreme)
+            if price >= bear_50:
+                self.strategy.bear_state = 4
+                self.strategy.bear_retrace_high = price
+                trade_range = self.strategy.bear_anchor - self.strategy.bear_extreme
+                if trade_range >= min_range:
                     buffer = price * 0.00005
                     signal = {
                         'side': 'SELL',

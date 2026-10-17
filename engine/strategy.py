@@ -26,11 +26,13 @@ class PureRTHEquilibriumStrategyEngine:
         self.bull_anchor = 0.0
         self.bull_extreme = 0.0
         self.bull_lowest_w1 = 0.0
+        self.bull_retrace_low = 0.0
         
         self.bear_state = 0
         self.bear_anchor = 0.0
         self.bear_extreme = 0.0
         self.bear_highest_w1 = 0.0
+        self.bear_retrace_high = 0.0
         
         self.active_bias = None
 
@@ -41,9 +43,11 @@ class PureRTHEquilibriumStrategyEngine:
         self.bull_state = 1
         self.bull_anchor = self.day_low
         self.bull_extreme = self.day_low
+        self.bull_retrace_low = self.day_low
         self.bear_state = 1
         self.bear_anchor = self.day_high
         self.bear_extreme = self.day_high
+        self.bear_retrace_high = self.day_high
         self.active_bias = None
 
     def process_bar(self, high_p, low_p, close_p, is_entry_allowed):
@@ -88,17 +92,19 @@ class PureRTHEquilibriumStrategyEngine:
                 self.bull_extreme = high_p
                 self.active_bias = "BULL" # Recency Override
         elif self.bull_state == 3:
+            # Wave 2+ Expansion Phase: tracking peak
             if low_p < self.bull_anchor:
                 self.bull_state = 0
                 if self.active_bias == "BULL": self.active_bias = None
             else:
                 if high_p > self.bull_extreme: self.bull_extreme = high_p
                 bull_50 = self.bull_extreme - 0.50 * (self.bull_extreme - self.bull_anchor)
-
-                # Trade Execution Gate: min_range strictly decides whether to place the order
-                trade_range = self.bull_extreme - self.bull_anchor
-                if is_entry_allowed and self.active_bias == "BULL" and low_p <= bull_50:
-                    if trade_range >= min_range:
+                if (self.bull_extreme - self.bull_anchor) > self.tick_size and low_p <= bull_50:
+                    self.bull_state = 4
+                    self.bull_retrace_low = low_p
+                    trade_range = self.bull_extreme - self.bull_anchor
+                    # Trade Execution Gate: min_range strictly decides whether to place the order
+                    if is_entry_allowed and self.active_bias == "BULL" and trade_range >= min_range:
                         buffer = close_p * 0.00005
                         signal = {
                             'side': 'BUY',
@@ -108,6 +114,18 @@ class PureRTHEquilibriumStrategyEngine:
                             'trade_50_level': bull_50,
                             'extreme_low': low_p
                         }
+        elif self.bull_state == 4:
+            # Wave 2+ Retracement Phase: tracking pullback low
+            self.bull_retrace_low = min(self.bull_retrace_low, low_p)
+            if low_p < self.bull_anchor:
+                self.bull_state = 0
+                if self.active_bias == "BULL": self.active_bias = None
+            elif high_p >= self.bull_extreme:
+                # Cycle Completed! Move and start measuring next wave regardless of trade
+                self.bull_state = 3
+                self.bull_anchor = self.bull_retrace_low
+                self.bull_extreme = high_p
+                self.active_bias = "BULL"
 
         # Bearish Wave Logic (Pure Market Structure)
         if self.bear_state == 1:
@@ -127,17 +145,19 @@ class PureRTHEquilibriumStrategyEngine:
                 self.bear_extreme = low_p
                 self.active_bias = "BEAR" # Recency Override
         elif self.bear_state == 3:
+            # Wave 2+ Expansion Phase: tracking valley
             if high_p > self.bear_anchor:
                 self.bear_state = 0
                 if self.active_bias == "BEAR": self.active_bias = None
             else:
                 if low_p < self.bear_extreme: self.bear_extreme = low_p
                 bear_50 = self.bear_extreme + 0.50 * (self.bear_anchor - self.bear_extreme)
-
-                # Trade Execution Gate: min_range strictly decides whether to place the order
-                trade_range = self.bear_anchor - self.bear_extreme
-                if is_entry_allowed and self.active_bias == "BEAR" and high_p >= bear_50:
-                    if trade_range >= min_range:
+                if (self.bear_anchor - self.bear_extreme) > self.tick_size and high_p >= bear_50:
+                    self.bear_state = 4
+                    self.bear_retrace_high = high_p
+                    trade_range = self.bear_anchor - self.bear_extreme
+                    # Trade Execution Gate: min_range strictly decides whether to place the order
+                    if is_entry_allowed and self.active_bias == "BEAR" and trade_range >= min_range:
                         buffer = close_p * 0.00005
                         signal = {
                             'side': 'SELL',
@@ -147,6 +167,18 @@ class PureRTHEquilibriumStrategyEngine:
                             'trade_50_level': bear_50,
                             'extreme_high': high_p
                         }
+        elif self.bear_state == 4:
+            # Wave 2+ Retracement Phase: tracking pullback high
+            self.bear_retrace_high = max(self.bear_retrace_high, high_p)
+            if high_p > self.bear_anchor:
+                self.bear_state = 0
+                if self.active_bias == "BEAR": self.active_bias = None
+            elif low_p <= self.bear_extreme:
+                # Cycle Completed! Move and start measuring next wave regardless of trade
+                self.bear_state = 3
+                self.bear_anchor = self.bear_retrace_high
+                self.bear_extreme = low_p
+                self.active_bias = "BEAR"
 
         return signal
 
