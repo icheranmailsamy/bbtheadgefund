@@ -31,9 +31,9 @@ class RiskManagementEngine:
         self.highest_in_trade = 0.0
 
     def is_entry_allowed(self, dt):
-        """09:30 to 15:50 EST allowed entries."""
+        """09:30 to 11:30 EST Morning Sniper allowed entries."""
         time_total_min = dt.hour * 60 + dt.minute
-        return 570 <= time_total_min <= 950
+        return 570 <= time_total_min <= 690
 
     def is_eod_flatten_time(self, dt):
         """15:59 EST mandatory close."""

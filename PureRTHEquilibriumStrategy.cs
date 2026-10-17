@@ -146,6 +146,8 @@ namespace NinjaTrader.NinjaScript.Strategies
             if (time < 093000 || time > 155500)
                 return;
 
+            bool isEntryAllowed = (time >= 093000 && time <= 113000); // Morning Sniper Window: 09:30 - 11:30 AM EST
+
             // Update session extremes
             if (Low[0] < dayLow)
             {
@@ -214,8 +216,8 @@ namespace NinjaTrader.NinjaScript.Strategies
                         bullRetraceLow = Low[0];
                         double tradeRange = bullExtreme - bullAnchor;
 
-                        // Trade Execution Gate
-                        if (Position.MarketPosition == MarketPosition.Flat && activeBias == "BULL" && tradeRange >= minRange)
+                        // Trade Execution Gate: Morning Sniper (09:30 - 11:30 EST)
+                        if (Position.MarketPosition == MarketPosition.Flat && isEntryAllowed && activeBias == "BULL" && tradeRange >= minRange)
                         {
                             trade50Level = bull50;
                             entryPrice = bull50 + (SlippageTicks * tick);
@@ -296,8 +298,8 @@ namespace NinjaTrader.NinjaScript.Strategies
                         bearRetraceHigh = High[0];
                         double tradeRange = bearAnchor - bearExtreme;
 
-                        // Trade Execution Gate
-                        if (Position.MarketPosition == MarketPosition.Flat && activeBias == "BEAR" && tradeRange >= minRange)
+                        // Trade Execution Gate: Morning Sniper (09:30 - 11:30 EST)
+                        if (Position.MarketPosition == MarketPosition.Flat && isEntryAllowed && activeBias == "BEAR" && tradeRange >= minRange)
                         {
                             trade50Level = bear50;
                             entryPrice = bear50 - (SlippageTicks * tick);
