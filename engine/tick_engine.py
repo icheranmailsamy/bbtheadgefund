@@ -104,6 +104,7 @@ class RealtimeTickAggregatorEngine:
                         'pnl_points': self.risk.tp_price - self.risk.entry_price
                     }
                     self.risk.in_trade = False
+                    self.risk._update_circuit_breaker(exit_ev['pnl_points'])
                     self.router.dispatch_exit(exit_ev, 'BUY', self.risk.entry_price)
                     return {'type': 'EXIT', 'event': exit_ev}
                     
@@ -115,6 +116,7 @@ class RealtimeTickAggregatorEngine:
                         'pnl_points': self.risk.sl_price - self.risk.entry_price
                     }
                     self.risk.in_trade = False
+                    self.risk._update_circuit_breaker(exit_ev['pnl_points'])
                     self.router.dispatch_exit(exit_ev, 'BUY', self.risk.entry_price)
                     return {'type': 'EXIT', 'event': exit_ev}
                     
@@ -137,6 +139,7 @@ class RealtimeTickAggregatorEngine:
                         'pnl_points': self.risk.entry_price - self.risk.tp_price
                     }
                     self.risk.in_trade = False
+                    self.risk._update_circuit_breaker(exit_ev['pnl_points'])
                     self.router.dispatch_exit(exit_ev, 'SELL', self.risk.entry_price)
                     return {'type': 'EXIT', 'event': exit_ev}
                     
@@ -148,6 +151,7 @@ class RealtimeTickAggregatorEngine:
                         'pnl_points': self.risk.entry_price - self.risk.sl_price
                     }
                     self.risk.in_trade = False
+                    self.risk._update_circuit_breaker(exit_ev['pnl_points'])
                     self.router.dispatch_exit(exit_ev, 'SELL', self.risk.entry_price)
                     return {'type': 'EXIT', 'event': exit_ev}
                     

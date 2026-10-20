@@ -1,8 +1,13 @@
 {
     "strategy": {
         "asset": "MNQ",
-        "contracts_per_account": 10,
-        "allowed_hours": [9, 10, 11, 14, 15]
+        "contracts_per_account": 5,
+        "session_start": "09:30",
+        "session_end": "11:30",
+        "hard_close_time": "11:30",
+        "min_range_points": 8.0,
+        "max_consecutive_losses_per_day": 3,
+        "model": "Option_B_Morning_Sniper"
     },
     "accounts": [
         {

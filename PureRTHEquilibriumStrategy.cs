@@ -33,12 +33,14 @@ namespace NinjaTrader.NinjaScript.Strategies
         private double bullExtreme;
         private double bullLowestW1;
         private double bullRetraceLow;
+        private double bullStoprunLow;
 
         private int bearState;
         private double bearAnchor;
         private double bearExtreme;
         private double bearHighestW1;
         private double bearRetraceHigh;
+        private double bearStoprunHigh;
 
         private string activeBias;
         private double trade50Level;
@@ -48,6 +50,8 @@ namespace NinjaTrader.NinjaScript.Strategies
         private double lowestInTrade;
         private double highestInTrade;
         private bool slMoved;
+        private int consecutiveLossCount;
+        private bool dayHalted;
 
         [NinjaScriptProperty]
         [Range(1, 100)]
@@ -55,9 +59,14 @@ namespace NinjaTrader.NinjaScript.Strategies
         public int Contracts { get; set; }
 
         [NinjaScriptProperty]
-        [Range(1, 10)]
-        [Display(Name="Slippage Ticks", Description="Slippage allowance in ticks", Order=2, GroupName="Parameters")]
+        [Range(0, 10)]
+        [Display(Name="Slippage Ticks", Description="Slippage allowance in ticks (0 for exact market filling price)", Order=2, GroupName="Parameters")]
         public int SlippageTicks { get; set; }
+
+        [NinjaScriptProperty]
+        [Range(1, 10)]
+        [Display(Name="Max Consecutive Losses", Description="Maximum consecutive losses permitted per day before halting until the next RTH session", Order=3, GroupName="Parameters")]
+        public int MaxConsecutiveLosses { get; set; }
 
         protected override void OnStateChange()
         {
@@ -65,7 +74,7 @@ namespace NinjaTrader.NinjaScript.Strategies
             {
                 Description                                 = @"Pure RTH 50% Equilibrium Institutional Execution Engine";
                 Name                                        = "PureRTHEquilibriumStrategy";
-                Calculate                                   = Calculate.OnBarClose;
+                Calculate                                   = Calculate.OnPriceChange; // Instant intra-bar entry on 50% touch (Zero waiting for bar close)
                 EntriesPerDirection                         = 1;
                 EntryHandling                               = EntryHandling.AllEntries;
                 IsExitOnSessionCloseStrategy                = true;
@@ -73,7 +82,7 @@ namespace NinjaTrader.NinjaScript.Strategies
                 IsFillLimitOnTouch                          = false;
                 MaximumBarsLookBack                         = MaximumBarsLookBack.TwoHundredFiftySix;
                 OrderFillResolution                         = OrderFillResolution.Standard;
-                Slippage                                    = 2;
+                Slippage                                    = 0;
                 StartBehavior                               = StartBehavior.WaitUntilFlat;
                 TimeInForce                                 = TimeInForce.Gtc;
                 TraceOrders                                 = false;
@@ -81,8 +90,9 @@ namespace NinjaTrader.NinjaScript.Strategies
                 StopTargetHandling                          = StopTargetHandling.PerEntryExecution;
                 BarsRequiredToTrade                         = 20;
 
-                Contracts                                   = 3;
-                SlippageTicks                               = 2;
+                Contracts                                   = 5;
+                SlippageTicks                               = 0; // Exact market filling price
+                MaxConsecutiveLosses                        = 3;
             }
             else if (State == State.Configure)
             {
@@ -98,7 +108,9 @@ namespace NinjaTrader.NinjaScript.Strategies
             bullState = 0;
             bearState = 0;
             bullRetraceLow = 0;
+            bullStoprunLow = 0;
             bearRetraceHigh = 0;
+            bearStoprunHigh = 0;
             activeBias = null;
             slMoved = false;
         }
@@ -127,16 +139,20 @@ namespace NinjaTrader.NinjaScript.Strategies
             // 2. PURE RTH FRESH START AT 09:30 AM EST
             if (time == 093000)
             {
+                consecutiveLossCount = 0;
+                dayHalted = false;
                 dayHigh = High[0];
                 dayLow = Low[0];
                 bullState = 1;
                 bullAnchor = dayLow;
                 bullExtreme = dayLow;
                 bullRetraceLow = dayLow;
+                bullStoprunLow = dayLow;
                 bearState = 1;
                 bearAnchor = dayHigh;
                 bearExtreme = dayHigh;
                 bearRetraceHigh = dayHigh;
+                bearStoprunHigh = dayHigh;
                 activeBias = null;
                 slMoved = false;
                 return;
@@ -146,7 +162,7 @@ namespace NinjaTrader.NinjaScript.Strategies
             if (time < 093000 || time >= 113000)
                 return;
 
-            bool isEntryAllowed = (time >= 093000 && time < 113000); // Morning Sniper Window: 09:30 - 11:30 AM EST
+            bool isEntryAllowed = (time >= 093000 && time < 113000) && !dayHalted;
 
             // Update session extremes
             if (Low[0] < dayLow)
@@ -202,7 +218,15 @@ namespace NinjaTrader.NinjaScript.Strategies
                 // Wave 2+ Expansion Phase: tracking peak
                 if (Low[0] < bullAnchor)
                 {
-                    bullState = 0;
+                    if (Low[0] >= dayLow)
+                    {
+                        bullState = 5;
+                        bullStoprunLow = Low[0];
+                    }
+                    else
+                    {
+                        bullState = 0;
+                    }
                     if (activeBias == "BULL") activeBias = null;
                 }
                 else
@@ -239,7 +263,15 @@ namespace NinjaTrader.NinjaScript.Strategies
                 bullRetraceLow = Math.Min(bullRetraceLow, Low[0]);
                 if (Low[0] < bullAnchor)
                 {
-                    bullState = 0;
+                    if (Low[0] >= dayLow)
+                    {
+                        bullState = 5;
+                        bullStoprunLow = Low[0];
+                    }
+                    else
+                    {
+                        bullState = 0;
+                    }
                     if (activeBias == "BULL") activeBias = null;
                 }
                 else if (High[0] >= bullExtreme)
@@ -247,6 +279,18 @@ namespace NinjaTrader.NinjaScript.Strategies
                     // Cycle Completed! Move and start measuring next wave regardless of trade
                     bullState = 3;
                     bullAnchor = bullRetraceLow;
+                    bullExtreme = High[0];
+                    activeBias = "BULL";
+                }
+            }
+            else if (bullState == 5)
+            {
+                // Option B: Stoprun Continuation Tracking
+                bullStoprunLow = Math.Min(bullStoprunLow, Low[0]);
+                if (High[0] >= bullExtreme)
+                {
+                    bullState = 3;
+                    bullAnchor = bullStoprunLow;
                     bullExtreme = High[0];
                     activeBias = "BULL";
                 }
@@ -284,7 +328,15 @@ namespace NinjaTrader.NinjaScript.Strategies
                 // Wave 2+ Expansion Phase: tracking valley
                 if (High[0] > bearAnchor)
                 {
-                    bearState = 0;
+                    if (High[0] <= dayHigh)
+                    {
+                        bearState = 5;
+                        bearStoprunHigh = High[0];
+                    }
+                    else
+                    {
+                        bearState = 0;
+                    }
                     if (activeBias == "BEAR") activeBias = null;
                 }
                 else
@@ -321,7 +373,15 @@ namespace NinjaTrader.NinjaScript.Strategies
                 bearRetraceHigh = Math.Max(bearRetraceHigh, High[0]);
                 if (High[0] > bearAnchor)
                 {
-                    bearState = 0;
+                    if (High[0] <= dayHigh)
+                    {
+                        bearState = 5;
+                        bearStoprunHigh = High[0];
+                    }
+                    else
+                    {
+                        bearState = 0;
+                    }
                     if (activeBias == "BEAR") activeBias = null;
                 }
                 else if (Low[0] <= bearExtreme)
@@ -329,6 +389,18 @@ namespace NinjaTrader.NinjaScript.Strategies
                     // Cycle Completed! Move and start measuring next wave regardless of trade
                     bearState = 3;
                     bearAnchor = bearRetraceHigh;
+                    bearExtreme = Low[0];
+                    activeBias = "BEAR";
+                }
+            }
+            else if (bearState == 5)
+            {
+                // Option B: Stoprun Continuation Tracking
+                bearStoprunHigh = Math.Max(bearStoprunHigh, High[0]);
+                if (Low[0] <= bearExtreme)
+                {
+                    bearState = 3;
+                    bearAnchor = bearStoprunHigh;
                     bearExtreme = Low[0];
                     activeBias = "BEAR";
                 }
@@ -357,6 +429,35 @@ namespace NinjaTrader.NinjaScript.Strategies
                     currentSl = highestInTrade + (Close[0] * 0.00005);
                     SetStopLoss("50_Equilibrium_Short", CalculationMode.Price, currentSl, false);
                     slMoved = true;
+                }
+            }
+        }
+
+        protected override void OnExecutionUpdate(Execution execution, string executionId, double price, int quantity, MarketPosition marketPosition, string orderId, DateTime time)
+        {
+            if (execution.Order != null && execution.Order.OrderState == OrderState.Filled)
+            {
+                // When a trade is closed and position is flat
+                if (Position.MarketPosition == MarketPosition.Flat && SystemPerformance.AllTrades.Count > 0)
+                {
+                    Trade lastTrade = SystemPerformance.AllTrades[SystemPerformance.AllTrades.Count - 1];
+                    // Only process trades closed during the current session
+                    if (lastTrade.Exit.Time.Date == Time[0].Date)
+                    {
+                        if (lastTrade.ProfitPoints <= 0)
+                        {
+                            consecutiveLossCount++;
+                            if (consecutiveLossCount >= MaxConsecutiveLosses)
+                            {
+                                dayHalted = true;
+                                Print(string.Format("{0} - Circuit Breaker Tripped: {1} consecutive losses reached today. Halting trading until tomorrow 09:30 AM EST.", Time[0], consecutiveLossCount));
+                            }
+                        }
+                        else
+                        {
+                            consecutiveLossCount = 0;
+                        }
+                    }
                 }
             }
         }

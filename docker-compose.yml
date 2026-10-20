@@ -1,0 +1,23 @@
+version: "3.8"
+
+services:
+  morning-sniper-bot:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: equilibrium_trading_bot
+    restart: unless-stopped
+    ports:
+      - "8501:8501"
+    environment:
+      - TZ=America/New_York
+      - PORT=8501
+    volumes:
+      # Persistent storage: SQLite database and config survive container rebuilds
+      - ./trades.db:/app/trades.db
+      - ./config.json:/app/config.json
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "20m"
+        max-file: "5"
