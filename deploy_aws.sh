@@ -12,15 +12,22 @@ echo "    DEPLOYING EQUILIBRIUM MORNING SNIPER TO AWS EC2 INSTANCE      "
 echo "=================================================================="
 
 # 1. Update OS packages and install core build & docker dependencies
-echo "[1/5] Installing Docker, Docker Compose, Git, and build tools..."
+echo "[1/5] Installing Docker, Git, and build tools..."
 sudo apt-get update -y
 sudo apt-get install -y --no-install-recommends \
     docker.io \
-    docker-compose-plugin \
     git \
     curl \
     htop \
     tzdata
+
+# Install Docker Compose Plugin (Compatible with Ubuntu 22.04 & 24.04 Noble)
+echo "[1b/5] Installing Docker Compose CLI Plugin..."
+sudo mkdir -p /usr/local/lib/docker/cli-plugins /etc/docker/cli-plugins /usr/local/bin
+DOCKER_COMPOSE_URL="https://github.com/docker/compose/releases/latest/download/docker-compose-linux-$(uname -m)"
+sudo curl -SL "$DOCKER_COMPOSE_URL" -o /usr/local/lib/docker/cli-plugins/docker-compose
+sudo chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
+sudo ln -sf /usr/local/lib/docker/cli-plugins/docker-compose /usr/local/bin/docker-compose
 
 # 2. Configure Docker service
 sudo systemctl enable docker
