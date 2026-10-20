@@ -1,0 +1,297 @@
+//@version=5
+strategy("The Morning Sniper (Option B + 3-Loss Stop)", overlay=true, initial_capital=50000, default_qty_type=strategy.fixed, default_qty_value=5, currency=currency.USD)
+
+// ==============================================================================
+// INPUT PARAMETERS
+// ==============================================================================
+contracts           = input.int(5, "Quantity (Contracts)", minval=1)
+min_range_points    = input.float(8.0, "Minimum Setup Range (Points)", minval=1.0)
+max_consec_losses   = input.int(3, "Max Consecutive Losses Per Day", minval=1)
+
+// ==============================================================================
+// TIMEZONE & SESSION CONTROLS (09:30 - 11:30 AM EST)
+// ==============================================================================
+is_session_open_bar = (hour(time, "America/New_York") == 9 and minute(time, "America/New_York") == 30)
+is_morning_window   = (hour(time, "America/New_York") == 9 and minute(time, "America/New_York") >= 30) or (hour(time, "America/New_York") == 10) or (hour(time, "America/New_York") == 11 and minute(time, "America/New_York") < 30)
+is_hard_close_time  = (hour(time, "America/New_York") >= 11 and minute(time, "America/New_York") >= 30) or (hour(time, "America/New_York") > 11)
+
+// Check for new day
+var int last_day = 0
+current_day = dayofmonth(time, "America/New_York")
+is_new_day = (current_day != last_day)
+if is_new_day
+    last_day := current_day
+
+// ==============================================================================
+// PERSISTENT STRATEGY STATE VARIABLES
+// ==============================================================================
+var float day_high = 0.0
+var float day_low = 1e9
+
+var int bull_state = 0
+var float bull_anchor = 0.0
+var float bull_extreme = 0.0
+var float bull_lowest_w1 = 0.0
+var float bull_retrace_low = 0.0
+var float bull_stoprun_low = 0.0
+
+var int bear_state = 0
+var float bear_anchor = 0.0
+var float bear_extreme = 0.0
+var float bear_highest_w1 = 0.0
+var float bear_retrace_high = 0.0
+var float bear_stoprun_high = 0.0
+
+var string active_bias = "NONE"
+
+var float trade_50_level = 0.0
+var float current_sl = 0.0
+var float current_tp = 0.0
+var float lowest_in_trade = 0.0
+var float highest_in_trade = 0.0
+var bool sl_moved = false
+
+var int consec_losses = 0
+var bool day_halted = false
+
+// ==============================================================================
+// 1. HARD SESSION FLATTEN AT 11:30 AM EST SHARP
+// ==============================================================================
+if is_hard_close_time
+    if strategy.position_size != 0
+        strategy.close_all(comment="Flatten_1130_Hard_Close")
+    bull_state := 0
+    bear_state := 0
+    active_bias := "NONE"
+
+// ==============================================================================
+// 2. 09:30 AM EST NYSE OPENING BELL RESET
+// ==============================================================================
+if is_session_open_bar
+    day_high := high
+    day_low := low
+    
+    bull_state := 1
+    bull_anchor := day_low
+    bull_extreme := day_low
+    bull_lowest_w1 := day_low
+    bull_retrace_low := day_low
+    bull_stoprun_low := day_low
+
+    bear_state := 1
+    bear_anchor := day_high
+    bear_extreme := day_high
+    bear_highest_w1 := day_high
+    bear_retrace_high := day_high
+    bear_stoprun_high := day_high
+
+    active_bias := "NONE"
+    sl_moved := false
+    consec_losses := 0
+    day_halted := false
+
+// ==============================================================================
+// 3. IN-TRADE MANAGEMENT (MIDPOINT STRUCTURAL TRAILING STOP)
+// ==============================================================================
+if strategy.position_size > 0
+    lowest_in_trade := math.min(lowest_in_trade, low)
+    trigger = trade_50_level + 0.50 * (current_tp - trade_50_level)
+    if high >= trigger and not sl_moved
+        current_sl := lowest_in_trade - (close * 0.00005)
+        sl_moved := true
+        strategy.exit("Exit_Long", from_entry="Long", stop=current_sl, limit=current_tp)
+
+else if strategy.position_size < 0
+    highest_in_trade := math.max(highest_in_trade, high)
+    trigger = trade_50_level - 0.50 * (trade_50_level - current_tp)
+    if low <= trigger and not sl_moved
+        current_sl := highest_in_trade + (close * 0.00005)
+        sl_moved := true
+        strategy.exit("Exit_Short", from_entry="Short", stop=current_sl, limit=current_tp)
+
+// Track Closed Trades for 3-Consecutive-Loss Circuit Breaker
+if strategy.closedtrades > 0 and ta.change(strategy.closedtrades)
+    last_profit = strategy.closedtrades.profit(strategy.closedtrades - 1)
+    if last_profit <= 0
+        consec_losses := consec_losses + 1
+        if consec_losses >= max_consec_losses
+            day_halted := true
+    else
+        consec_losses := 0
+
+// ==============================================================================
+// 4. SESSION EXTREMES & STATE EXPANSION
+// ==============================================================================
+if is_morning_window and not is_session_open_bar
+    if low < day_low
+        day_low := low
+        bull_state := 1
+        bull_anchor := day_low
+        bull_extreme := day_low
+        if active_bias == "BULL"
+            active_bias := "NONE"
+
+    if high > day_high
+        day_high := high
+        bear_state := 1
+        bear_anchor := day_high
+        bear_extreme := day_high
+        if active_bias == "BEAR"
+            active_bias := "NONE"
+
+    is_entry_allowed = (strategy.position_size == 0) and (not day_halted)
+    tick = syminfo.mintick
+
+    // --------------------------------------------------------------------------
+    // BULLISH STATE MACHINE (OPTION B)
+    // --------------------------------------------------------------------------
+    if bull_state == 1
+        if high > bull_extreme
+            bull_extreme := high
+        bull_50 = bull_extreme - 0.50 * (bull_extreme - bull_anchor)
+        if (bull_extreme - bull_anchor) > tick and low <= bull_50
+            bull_state := 2
+            bull_lowest_w1 := low
+    else if bull_state == 2
+        bull_lowest_w1 := math.min(bull_lowest_w1, low)
+        if low < bull_anchor
+            bull_state := 0
+            if active_bias == "BULL"
+                active_bias := "NONE"
+        else if high >= bull_extreme
+            bull_state := 3
+            bull_anchor := bull_lowest_w1
+            bull_extreme := high
+            active_bias := "BULL" // Recency Override
+    else if bull_state == 3
+        if low < bull_anchor
+            if low >= day_low
+                bull_state := 5 // Option B: Wave Failure Stoprun Continuation
+                bull_stoprun_low := low
+            else
+                bull_state := 0
+            if active_bias == "BULL"
+                active_bias := "NONE"
+        else
+            if high > bull_extreme
+                bull_extreme := high
+            bull_50 = bull_extreme - 0.50 * (bull_extreme - bull_anchor)
+            if (bull_extreme - bull_anchor) > tick and low <= bull_50
+                bull_state := 4
+                bull_retrace_low := low
+                trade_range = bull_extreme - bull_anchor
+
+                // Long Entry Gate
+                if is_entry_allowed and active_bias == "BULL" and trade_range >= min_range_points
+                    trade_50_level := bull_50
+                    current_sl := bull_anchor - (close * 0.00005)
+                    current_tp := bull_extreme
+                    lowest_in_trade := low
+                    sl_moved := false
+
+                    strategy.entry("Long", strategy.long, qty=contracts, limit=bull_50)
+                    strategy.exit("Exit_Long", from_entry="Long", stop=current_sl, limit=current_tp)
+
+    else if bull_state == 4
+        bull_retrace_low := math.min(bull_retrace_low, low)
+        if low < bull_anchor
+            if low >= day_low
+                bull_state := 5 // Option B
+                bull_stoprun_low := low
+            else
+                bull_state := 0
+            if active_bias == "BULL"
+                active_bias := "NONE"
+        else if high >= bull_extreme
+            bull_state := 3
+            bull_anchor := bull_retrace_low
+            bull_extreme := high
+            active_bias := "BULL"
+    else if bull_state == 5
+        bull_stoprun_low := math.min(bull_stoprun_low, low)
+        if high >= bull_extreme
+            bull_state := 3
+            bull_anchor := bull_stoprun_low
+            bull_extreme := high
+            active_bias := "BULL"
+
+    // --------------------------------------------------------------------------
+    // BEARISH STATE MACHINE (OPTION B)
+    // --------------------------------------------------------------------------
+    if bear_state == 1
+        if low < bear_extreme
+            bear_extreme := low
+        bear_50 = bear_extreme + 0.50 * (bear_anchor - bear_extreme)
+        if (bear_anchor - bear_extreme) > tick and high >= bear_50
+            bear_state := 2
+            bear_highest_w1 := high
+    else if bear_state == 2
+        bear_highest_w1 := math.max(bear_highest_w1, high)
+        if high > bear_anchor
+            bear_state := 0
+            if active_bias == "BEAR"
+                active_bias := "NONE"
+        else if low <= bear_extreme
+            bear_state := 3
+            bear_anchor := bear_highest_w1
+            bear_extreme := low
+            active_bias := "BEAR" // Recency Override
+    else if bear_state == 3
+        if high > bear_anchor
+            if high <= day_high
+                bear_state := 5 // Option B
+                bear_stoprun_high := high
+            else
+                bear_state := 0
+            if active_bias == "BEAR"
+                active_bias := "NONE"
+        else
+            if low < bear_extreme
+                bear_extreme := low
+            bear_50 = bear_extreme + 0.50 * (bear_anchor - bear_extreme)
+            if (bear_anchor - bear_extreme) > tick and high >= bear_50
+                bear_state := 4
+                bear_retrace_high := high
+                trade_range = bear_anchor - bear_extreme
+
+                // Short Entry Gate
+                if is_entry_allowed and active_bias == "BEAR" and trade_range >= min_range_points
+                    trade_50_level := bear_50
+                    current_sl := bear_anchor + (close * 0.00005)
+                    current_tp := bear_extreme
+                    highest_in_trade := high
+                    sl_moved := false
+
+                    strategy.entry("Short", strategy.short, qty=contracts, limit=bear_50)
+                    strategy.exit("Exit_Short", from_entry="Short", stop=current_sl, limit=current_tp)
+
+    else if bear_state == 4
+        bear_retrace_high := math.max(bear_retrace_high, high)
+        if high > bear_anchor
+            if high <= day_high
+                bear_state := 5 // Option B
+                bear_stoprun_high := high
+            else
+                bear_state := 0
+            if active_bias == "BEAR"
+                active_bias := "NONE"
+        else if low <= bear_extreme
+            bear_state := 3
+            bear_anchor := bear_retrace_high
+            bear_extreme := low
+            active_bias := "BEAR"
+    else if bear_state == 5
+        bear_stoprun_high := math.max(bear_stoprun_high, high)
+        if low <= bear_extreme
+            bear_state := 3
+            bear_anchor := bear_stoprun_high
+            bear_extreme := low
+            active_bias := "BEAR"
+
+// ==============================================================================
+// VISUAL PLOTS
+// ==============================================================================
+plot(strategy.position_size > 0 ? current_tp : na, "Long TP", color=color.green, style=plot.style_linebr, linewidth=2)
+plot(strategy.position_size > 0 ? current_sl : na, "Long SL", color=color.red, style=plot.style_linebr, linewidth=2)
+plot(strategy.position_size < 0 ? current_tp : na, "Short TP", color=color.green, style=plot.style_linebr, linewidth=2)
+plot(strategy.position_size < 0 ? current_sl : na, "Short SL", color=color.red, style=plot.style_linebr, linewidth=2)
