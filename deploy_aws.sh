@@ -27,11 +27,21 @@ sudo systemctl enable docker
 sudo systemctl start docker
 sudo usermod -aG docker $USER
 
-# 3. Synchronize Timezone to America/New_York (NYSE / CME Market Hours)
+# 3. Configure 2GB Swap Memory (Enables 100% Free Tier t3.micro support)
+if [ $(free -m | awk '/^Mem:/{print $2}') -lt 1800 ] && [ ! -f /swapfile ]; then
+    echo "[SETUP] Configuring 2GB virtual memory swap (Enabling 100% Free Tier t3.micro)..."
+    sudo fallocate -l 2G /swapfile || sudo dd if=/dev/zero of=/swapfile bs=1M count=2048
+    sudo chmod 600 /swapfile
+    sudo mkswap /swapfile
+    sudo swapon /swapfile
+    echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
+fi
+
+# 4. Synchronize Timezone to America/New_York (NYSE / CME Market Hours)
 echo "[2/5] Setting server timezone to America/New_York (EST)..."
 sudo timedatectl set-timezone America/New_York
 
-# 4. Clone or pull latest code
+# 5. Clone or pull latest code
 REPO_DIR="bbtheadgefund"
 if [ -d "$REPO_DIR" ]; then
     echo "[3/5] Updating existing repository..."
@@ -43,7 +53,7 @@ else
     cd "$REPO_DIR"
 fi
 
-# 5. Ensure config.json exists
+# 6. Ensure config.json exists
 if [ ! -f config.json ]; then
     echo "[4/5] Initializing config.json from template..."
     cp config.example.json config.json
