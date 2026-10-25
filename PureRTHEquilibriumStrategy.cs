@@ -26,6 +26,31 @@ namespace NinjaTrader.NinjaScript.Strategies
 {
     public class PureRTHEquilibriumStrategy : Strategy
     {
+        private static readonly TimeZoneInfo EasternZone;
+
+        static PureRTHEquilibriumStrategy()
+        {
+            try
+            {
+                EasternZone = TimeZoneInfo.FindSystemTimeZoneById("Eastern Standard Time");
+            }
+            catch
+            {
+                try
+                {
+                    EasternZone = TimeZoneInfo.FindSystemTimeZoneById("America/New_York");
+                }
+                catch
+                {
+                    EasternZone = TimeZoneInfo.Local;
+                }
+            }
+        }
+
+        private DateTime currentSessionDate = DateTime.MinValue;
+        private bool isSessionInitializedToday = false;
+        private string lastProcessedExitOrderId = string.Empty;
+
         private double dayHigh;
         private double dayLow;
         private int bullState;
@@ -101,6 +126,18 @@ namespace NinjaTrader.NinjaScript.Strategies
             }
         }
 
+        private DateTime GetEasternTime(DateTime barTime)
+        {
+            try
+            {
+                return TimeZoneInfo.ConvertTime(barTime, Core.Globals.GeneralOptions.TimeZoneInfo, EasternZone);
+            }
+            catch
+            {
+                return barTime;
+            }
+        }
+
         private void ClearState()
         {
             dayHigh = 0;
@@ -120,7 +157,8 @@ namespace NinjaTrader.NinjaScript.Strategies
             if (CurrentBar < BarsRequiredToTrade)
                 return;
 
-            int time = ToTime(Time[0]);
+            DateTime easternNow = GetEasternTime(Time[0]);
+            int time = ToTime(easternNow);
 
             // 1. HARD FLATTEN AT 11:30 AM EST SHARP (The Morning Sniper Final Model)
             if (time >= 113000)
@@ -136,9 +174,15 @@ namespace NinjaTrader.NinjaScript.Strategies
                 return;
             }
 
-            // 2. PURE RTH FRESH START AT 09:30 AM EST
-            if (time == 093000)
+            // Skip pre-market bars before 09:30 AM EST
+            if (time < 093000)
+                return;
+
+            // 2. PURE RTH FRESH START AT 09:30 AM EST (First bar of today's morning sniper session)
+            if (easternNow.Date != currentSessionDate || !isSessionInitializedToday)
             {
+                currentSessionDate = easternNow.Date;
+                isSessionInitializedToday = true;
                 consecutiveLossCount = 0;
                 dayHalted = false;
                 dayHigh = High[0];
@@ -157,10 +201,6 @@ namespace NinjaTrader.NinjaScript.Strategies
                 slMoved = false;
                 return;
             }
-
-            // Skip everything outside Morning Sniper window (09:30 - 11:30 EST)
-            if (time < 093000 || time >= 113000)
-                return;
 
             bool isEntryAllowed = (time >= 093000 && time < 113000) && !dayHalted;
 
@@ -250,9 +290,10 @@ namespace NinjaTrader.NinjaScript.Strategies
                             lowestInTrade = Low[0];
                             slMoved = false;
 
-                            EnterLong(Contracts, "50_Equilibrium_Long");
+                            // Protection orders MUST be set before submitting entry order
                             SetStopLoss("50_Equilibrium_Long", CalculationMode.Price, currentSl, false);
                             SetProfitTarget("50_Equilibrium_Long", CalculationMode.Price, currentTp);
+                            EnterLong(Contracts, "50_Equilibrium_Long");
                         }
                     }
                 }
@@ -360,9 +401,10 @@ namespace NinjaTrader.NinjaScript.Strategies
                             highestInTrade = High[0];
                             slMoved = false;
 
-                            EnterShort(Contracts, "50_Equilibrium_Short");
+                            // Protection orders MUST be set before submitting entry order
                             SetStopLoss("50_Equilibrium_Short", CalculationMode.Price, currentSl, false);
                             SetProfitTarget("50_Equilibrium_Short", CalculationMode.Price, currentTp);
+                            EnterShort(Contracts, "50_Equilibrium_Short");
                         }
                     }
                 }
@@ -440,17 +482,26 @@ namespace NinjaTrader.NinjaScript.Strategies
                 // When a trade is closed and position is flat
                 if (Position.MarketPosition == MarketPosition.Flat && SystemPerformance.AllTrades.Count > 0)
                 {
+                    // Deduplicate multi-execution partial fills on the same exit order
+                    if (execution.Order.OrderId == lastProcessedExitOrderId)
+                        return;
+
                     Trade lastTrade = SystemPerformance.AllTrades[SystemPerformance.AllTrades.Count - 1];
+                    DateTime easternExitTime = GetEasternTime(lastTrade.Exit.Time);
+                    DateTime easternNow = GetEasternTime(Time[0]);
+
                     // Only process trades closed during the current session
-                    if (lastTrade.Exit.Time.Date == Time[0].Date)
+                    if (easternExitTime.Date == easternNow.Date)
                     {
+                        lastProcessedExitOrderId = execution.Order.OrderId;
+
                         if (lastTrade.ProfitPoints <= 0)
                         {
                             consecutiveLossCount++;
                             if (consecutiveLossCount >= MaxConsecutiveLosses)
                             {
                                 dayHalted = true;
-                                Print(string.Format("{0} - Circuit Breaker Tripped: {1} consecutive losses reached today. Halting trading until tomorrow 09:30 AM EST.", Time[0], consecutiveLossCount));
+                                Print(string.Format("{0} EST - Circuit Breaker Tripped: {1} consecutive losses reached today. Halting trading until tomorrow 09:30 AM EST.", easternNow, consecutiveLossCount));
                             }
                         }
                         else
