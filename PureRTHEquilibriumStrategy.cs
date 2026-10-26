@@ -113,7 +113,7 @@ namespace NinjaTrader.NinjaScript.Strategies
                 TraceOrders                                 = false;
                 RealtimeErrorHandling                       = RealtimeErrorHandling.StopCancelClose;
                 StopTargetHandling                          = StopTargetHandling.PerEntryExecution;
-                BarsRequiredToTrade                         = 20;
+                BarsRequiredToTrade                         = 1;
 
                 Contracts                                   = 5;
                 SlippageTicks                               = 0; // Exact market filling price
