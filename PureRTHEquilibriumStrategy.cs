@@ -50,6 +50,7 @@ namespace NinjaTrader.NinjaScript.Strategies
         private DateTime currentSessionDate = DateTime.MinValue;
         private bool isSessionInitializedToday = false;
         private string lastProcessedExitOrderId = string.Empty;
+        private bool orderEntryPending = false;
 
         private double dayHigh;
         private double dayLow;
@@ -93,6 +94,10 @@ namespace NinjaTrader.NinjaScript.Strategies
         [Display(Name="Max Consecutive Losses", Description="Maximum consecutive losses permitted per day before halting until the next RTH session", Order=3, GroupName="Parameters")]
         public int MaxConsecutiveLosses { get; set; }
 
+        [NinjaScriptProperty]
+        [Display(Name="Use Market Orders", Description="If true, enters with Market orders on touch. If false, submits Limit orders at 50% + slippage ticks.", Order=4, GroupName="Parameters")]
+        public bool UseMarketOrders { get; set; }
+
         protected override void OnStateChange()
         {
             if (State == State.SetDefaults)
@@ -118,6 +123,7 @@ namespace NinjaTrader.NinjaScript.Strategies
                 Contracts                                   = 5;
                 SlippageTicks                               = 0; // Exact market filling price
                 MaxConsecutiveLosses                        = 3;
+                UseMarketOrders                             = true; // Default to Market orders for guaranteed instant fills on 50% touch
             }
             else if (State == State.Configure)
             {
@@ -150,6 +156,9 @@ namespace NinjaTrader.NinjaScript.Strategies
             bearStoprunHigh = 0;
             activeBias = null;
             slMoved = false;
+            lowestInTrade = 0;
+            highestInTrade = 0;
+            orderEntryPending = false;
         }
 
         protected override void OnBarUpdate()
@@ -281,7 +290,7 @@ namespace NinjaTrader.NinjaScript.Strategies
                         double tradeRange = bullExtreme - bullAnchor;
 
                         // Trade Execution Gate: Morning Sniper (09:30 - 11:30 EST)
-                        if (Position.MarketPosition == MarketPosition.Flat && isEntryAllowed && activeBias == "BULL" && tradeRange >= minRange)
+                        if (Position.MarketPosition == MarketPosition.Flat && !orderEntryPending && isEntryAllowed && activeBias == "BULL" && tradeRange >= minRange)
                         {
                             trade50Level = bull50;
                             entryPrice = bull50 + (SlippageTicks * tick);
@@ -289,11 +298,16 @@ namespace NinjaTrader.NinjaScript.Strategies
                             currentTp = bullExtreme;
                             lowestInTrade = Low[0];
                             slMoved = false;
+                            orderEntryPending = true;
 
                             // Protection orders MUST be set before submitting entry order
                             SetStopLoss("50_Equilibrium_Long", CalculationMode.Price, currentSl, false);
                             SetProfitTarget("50_Equilibrium_Long", CalculationMode.Price, currentTp);
-                            EnterLong(Contracts, "50_Equilibrium_Long");
+
+                            if (UseMarketOrders)
+                                EnterLong(Contracts, "50_Equilibrium_Long");
+                            else
+                                EnterLongLimit(Contracts, entryPrice, "50_Equilibrium_Long");
                         }
                     }
                 }
@@ -319,7 +333,7 @@ namespace NinjaTrader.NinjaScript.Strategies
                 {
                     // Cycle Completed! Move and start measuring next wave regardless of trade
                     bullState = 3;
-                    bullAnchor = bullRetraceLow;
+                    bullAnchor = (lowestInTrade > 0) ? Math.Min(bullRetraceLow, lowestInTrade) : bullRetraceLow;
                     bullExtreme = High[0];
                     activeBias = "BULL";
                 }
@@ -392,7 +406,7 @@ namespace NinjaTrader.NinjaScript.Strategies
                         double tradeRange = bearAnchor - bearExtreme;
 
                         // Trade Execution Gate: Morning Sniper (09:30 - 11:30 EST)
-                        if (Position.MarketPosition == MarketPosition.Flat && isEntryAllowed && activeBias == "BEAR" && tradeRange >= minRange)
+                        if (Position.MarketPosition == MarketPosition.Flat && !orderEntryPending && isEntryAllowed && activeBias == "BEAR" && tradeRange >= minRange)
                         {
                             trade50Level = bear50;
                             entryPrice = bear50 - (SlippageTicks * tick);
@@ -400,11 +414,16 @@ namespace NinjaTrader.NinjaScript.Strategies
                             currentTp = bearExtreme;
                             highestInTrade = High[0];
                             slMoved = false;
+                            orderEntryPending = true;
 
                             // Protection orders MUST be set before submitting entry order
                             SetStopLoss("50_Equilibrium_Short", CalculationMode.Price, currentSl, false);
                             SetProfitTarget("50_Equilibrium_Short", CalculationMode.Price, currentTp);
-                            EnterShort(Contracts, "50_Equilibrium_Short");
+
+                            if (UseMarketOrders)
+                                EnterShort(Contracts, "50_Equilibrium_Short");
+                            else
+                                EnterShortLimit(Contracts, entryPrice, "50_Equilibrium_Short");
                         }
                     }
                 }
@@ -430,7 +449,7 @@ namespace NinjaTrader.NinjaScript.Strategies
                 {
                     // Cycle Completed! Move and start measuring next wave regardless of trade
                     bearState = 3;
-                    bearAnchor = bearRetraceHigh;
+                    bearAnchor = (highestInTrade > 0) ? Math.Max(bearRetraceHigh, highestInTrade) : bearRetraceHigh;
                     bearExtreme = Low[0];
                     activeBias = "BEAR";
                 }
@@ -456,7 +475,7 @@ namespace NinjaTrader.NinjaScript.Strategies
 
                 if (High[0] >= triggerPrice && !slMoved)
                 {
-                    currentSl = lowestInTrade - (Close[0] * 0.00005);
+                    currentSl = Math.Max(currentSl, lowestInTrade - (Close[0] * 0.00005));
                     SetStopLoss("50_Equilibrium_Long", CalculationMode.Price, currentSl, false);
                     slMoved = true;
                 }
@@ -468,10 +487,18 @@ namespace NinjaTrader.NinjaScript.Strategies
 
                 if (Low[0] <= triggerPrice && !slMoved)
                 {
-                    currentSl = highestInTrade + (Close[0] * 0.00005);
+                    currentSl = Math.Min(currentSl, highestInTrade + (Close[0] * 0.00005));
                     SetStopLoss("50_Equilibrium_Short", CalculationMode.Price, currentSl, false);
                     slMoved = true;
                 }
+            }
+        }
+
+        protected override void OnOrderUpdate(Order order, double limitPrice, double stopPrice, int quantity, int filled, double averageFillPrice, OrderState orderState, DateTime time, ErrorCode error, string comment)
+        {
+            if (orderState == OrderState.Cancelled || orderState == OrderState.Rejected)
+            {
+                orderEntryPending = false;
             }
         }
 
@@ -479,6 +506,8 @@ namespace NinjaTrader.NinjaScript.Strategies
         {
             if (execution.Order != null && execution.Order.OrderState == OrderState.Filled)
             {
+                orderEntryPending = false;
+
                 // When a trade is closed and position is flat
                 if (Position.MarketPosition == MarketPosition.Flat && SystemPerformance.AllTrades.Count > 0)
                 {
