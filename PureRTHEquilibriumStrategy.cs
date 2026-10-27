@@ -76,6 +76,7 @@ namespace NinjaTrader.NinjaScript.Strategies
         private double lowestInTrade;
         private double highestInTrade;
         private bool slMoved;
+        private int entryBarIndex = -1;
         private int consecutiveLossCount;
         private bool dayHalted;
 
@@ -158,6 +159,7 @@ namespace NinjaTrader.NinjaScript.Strategies
             slMoved = false;
             lowestInTrade = 0;
             highestInTrade = 0;
+            entryBarIndex = -1;
             orderEntryPending = false;
         }
 
@@ -298,6 +300,7 @@ namespace NinjaTrader.NinjaScript.Strategies
                             currentTp = bullExtreme;
                             lowestInTrade = Low[0];
                             slMoved = false;
+                            entryBarIndex = CurrentBar;
                             orderEntryPending = true;
 
                             // Protection orders MUST be set before submitting entry order
@@ -414,6 +417,7 @@ namespace NinjaTrader.NinjaScript.Strategies
                             currentTp = bearExtreme;
                             highestInTrade = High[0];
                             slMoved = false;
+                            entryBarIndex = CurrentBar;
                             orderEntryPending = true;
 
                             // Protection orders MUST be set before submitting entry order
@@ -467,29 +471,43 @@ namespace NinjaTrader.NinjaScript.Strategies
                 }
             }
 
-            // Dynamic Risk Reduction Trailing Stop
+            // Dynamic Risk Reduction Trailing Stop (Forward-bar evaluation matching canonical engine i+1 onwards)
             if (Position.MarketPosition == MarketPosition.Long)
             {
                 lowestInTrade = Math.Min(lowestInTrade, Low[0]);
-                double triggerPrice = trade50Level + 0.50 * (currentTp - trade50Level);
 
-                if (High[0] >= triggerPrice && !slMoved)
+                // Crucial Guard: Only evaluate trailing stop on bars AFTER the entry bar.
+                // In OnPriceChange mode, High[0] on the entry bar was formed before the pullback to 50%,
+                // which would falsely satisfy triggerPrice immediately on the next tick and cause premature exit.
+                if (CurrentBar > entryBarIndex)
                 {
-                    currentSl = Math.Max(currentSl, lowestInTrade - (Close[0] * 0.00005));
-                    SetStopLoss("50_Equilibrium_Long", CalculationMode.Price, currentSl, false);
-                    slMoved = true;
+                    double triggerPrice = trade50Level + 0.50 * (currentTp - trade50Level);
+
+                    if (High[0] >= triggerPrice && !slMoved)
+                    {
+                        currentSl = Math.Max(currentSl, lowestInTrade - (Close[0] * 0.00005));
+                        SetStopLoss("50_Equilibrium_Long", CalculationMode.Price, currentSl, false);
+                        slMoved = true;
+                    }
                 }
             }
             else if (Position.MarketPosition == MarketPosition.Short)
             {
                 highestInTrade = Math.Max(highestInTrade, High[0]);
-                double triggerPrice = trade50Level - 0.50 * (trade50Level - currentTp);
 
-                if (Low[0] <= triggerPrice && !slMoved)
+                // Crucial Guard: Only evaluate trailing stop on bars AFTER the entry bar.
+                // In OnPriceChange mode, Low[0] on the entry bar was formed before the bounce to 50%,
+                // which would falsely satisfy triggerPrice immediately on the next tick and cause premature exit.
+                if (CurrentBar > entryBarIndex)
                 {
-                    currentSl = Math.Min(currentSl, highestInTrade + (Close[0] * 0.00005));
-                    SetStopLoss("50_Equilibrium_Short", CalculationMode.Price, currentSl, false);
-                    slMoved = true;
+                    double triggerPrice = trade50Level - 0.50 * (trade50Level - currentTp);
+
+                    if (Low[0] <= triggerPrice && !slMoved)
+                    {
+                        currentSl = Math.Min(currentSl, highestInTrade + (Close[0] * 0.00005));
+                        SetStopLoss("50_Equilibrium_Short", CalculationMode.Price, currentSl, false);
+                        slMoved = true;
+                    }
                 }
             }
         }
@@ -509,33 +527,38 @@ namespace NinjaTrader.NinjaScript.Strategies
                 orderEntryPending = false;
 
                 // When a trade is closed and position is flat
-                if (Position.MarketPosition == MarketPosition.Flat && SystemPerformance.AllTrades.Count > 0)
+                if (Position.MarketPosition == MarketPosition.Flat)
                 {
-                    // Deduplicate multi-execution partial fills on the same exit order
-                    if (execution.Order.OrderId == lastProcessedExitOrderId)
-                        return;
+                    entryBarIndex = -1;
 
-                    Trade lastTrade = SystemPerformance.AllTrades[SystemPerformance.AllTrades.Count - 1];
-                    DateTime easternExitTime = GetEasternTime(lastTrade.Exit.Time);
-                    DateTime easternNow = GetEasternTime(Time[0]);
-
-                    // Only process trades closed during the current session
-                    if (easternExitTime.Date == easternNow.Date)
+                    if (SystemPerformance.AllTrades.Count > 0)
                     {
-                        lastProcessedExitOrderId = execution.Order.OrderId;
+                        // Deduplicate multi-execution partial fills on the same exit order
+                        if (execution.Order.OrderId == lastProcessedExitOrderId)
+                            return;
 
-                        if (lastTrade.ProfitPoints <= 0)
+                        Trade lastTrade = SystemPerformance.AllTrades[SystemPerformance.AllTrades.Count - 1];
+                        DateTime easternExitTime = GetEasternTime(lastTrade.Exit.Time);
+                        DateTime easternNow = GetEasternTime(Time[0]);
+
+                        // Only process trades closed during the current session
+                        if (easternExitTime.Date == easternNow.Date)
                         {
-                            consecutiveLossCount++;
-                            if (consecutiveLossCount >= MaxConsecutiveLosses)
+                            lastProcessedExitOrderId = execution.Order.OrderId;
+
+                            if (lastTrade.ProfitPoints <= 0)
                             {
-                                dayHalted = true;
-                                Print(string.Format("{0} EST - Circuit Breaker Tripped: {1} consecutive losses reached today. Halting trading until tomorrow 09:30 AM EST.", easternNow, consecutiveLossCount));
+                                consecutiveLossCount++;
+                                if (consecutiveLossCount >= MaxConsecutiveLosses)
+                                {
+                                    dayHalted = true;
+                                    Print(string.Format("{0} EST - Circuit Breaker Tripped: {1} consecutive losses reached today. Halting trading until tomorrow 09:30 AM EST.", easternNow, consecutiveLossCount));
+                                }
                             }
-                        }
-                        else
-                        {
-                            consecutiveLossCount = 0;
+                            else
+                            {
+                                consecutiveLossCount = 0;
+                            }
                         }
                     }
                 }
