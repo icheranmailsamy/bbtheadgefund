@@ -46,6 +46,7 @@ class FinalPureRTHEquilibriumBot:
         self.contracts = strategy_cfg.get('contracts_per_account', 5)
         self.min_range = strategy_cfg.get('min_range_points', 8.0)
         self.max_consecutive_losses = strategy_cfg.get('max_consecutive_losses_per_day', 3)
+        self.use_trailing_stop = strategy_cfg.get('use_trailing_stop', False)
         self.accounts = [acc for acc in self.config.get('accounts', []) if acc.get('is_active', True)]
         
         # Position and trade tracking
@@ -185,7 +186,7 @@ class FinalPureRTHEquilibriumBot:
                 else:
                     self.bull_state = 0
                 self.active_bias = None
-            else:
+            elif self.use_trailing_stop:
                 trigger = self.trade_50_level + 0.50 * (self.tp_price - self.trade_50_level)
                 if high_p >= trigger and not self.sl_moved:
                     buffer = close_p * 0.00005
@@ -210,7 +211,7 @@ class FinalPureRTHEquilibriumBot:
                 else:
                     self.bear_state = 0
                 self.active_bias = None
-            else:
+            elif self.use_trailing_stop:
                 trigger = self.trade_50_level - 0.50 * (self.trade_50_level - self.tp_price)
                 if low_p <= trigger and not self.sl_moved:
                     buffer = close_p * 0.00005

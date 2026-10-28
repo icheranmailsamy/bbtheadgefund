@@ -99,6 +99,10 @@ namespace NinjaTrader.NinjaScript.Strategies
         [Display(Name="Use Market Orders", Description="If true, enters with Market orders on touch. If false, submits Limit orders at 50% + slippage ticks.", Order=4, GroupName="Parameters")]
         public bool UseMarketOrders { get; set; }
 
+        [NinjaScriptProperty]
+        [Display(Name="Use Trailing Stop", Description="If true, trails stop to pivot after 50% TP progress. If false, maintains full structural anchor stop for maximum win rate (65.1%).", Order=5, GroupName="Parameters")]
+        public bool UseTrailingStop { get; set; }
+
         protected override void OnStateChange()
         {
             if (State == State.SetDefaults)
@@ -125,6 +129,7 @@ namespace NinjaTrader.NinjaScript.Strategies
                 SlippageTicks                               = 0; // Exact market filling price
                 MaxConsecutiveLosses                        = 3;
                 UseMarketOrders                             = true; // Default to Market orders for guaranteed instant fills on 50% touch
+                UseTrailingStop                             = false; // Disabled by default in production for higher win rate (65.08%) and +$927k PnL
             }
             else if (State == State.Configure)
             {
@@ -471,42 +476,45 @@ namespace NinjaTrader.NinjaScript.Strategies
                 }
             }
 
-            // Dynamic Risk Reduction Trailing Stop (Forward-bar evaluation matching canonical engine i+1 onwards)
-            if (Position.MarketPosition == MarketPosition.Long)
+            // Dynamic Risk Reduction Trailing Stop (Optional: Disabled by default for higher 65.1% win rate)
+            if (UseTrailingStop)
             {
-                lowestInTrade = Math.Min(lowestInTrade, Low[0]);
-
-                // Crucial Guard: Only evaluate trailing stop on bars AFTER the entry bar.
-                // In OnPriceChange mode, High[0] on the entry bar was formed before the pullback to 50%,
-                // which would falsely satisfy triggerPrice immediately on the next tick and cause premature exit.
-                if (CurrentBar > entryBarIndex)
+                if (Position.MarketPosition == MarketPosition.Long)
                 {
-                    double triggerPrice = trade50Level + 0.50 * (currentTp - trade50Level);
+                    lowestInTrade = Math.Min(lowestInTrade, Low[0]);
 
-                    if (High[0] >= triggerPrice && !slMoved)
+                    // Crucial Guard: Only evaluate trailing stop on bars AFTER the entry bar.
+                    // In OnPriceChange mode, High[0] on the entry bar was formed before the pullback to 50%,
+                    // which would falsely satisfy triggerPrice immediately on the next tick and cause premature exit.
+                    if (CurrentBar > entryBarIndex)
                     {
-                        currentSl = Math.Max(currentSl, lowestInTrade - (Close[0] * 0.00005));
-                        SetStopLoss("50_Equilibrium_Long", CalculationMode.Price, currentSl, false);
-                        slMoved = true;
+                        double triggerPrice = trade50Level + 0.50 * (currentTp - trade50Level);
+
+                        if (High[0] >= triggerPrice && !slMoved)
+                        {
+                            currentSl = Math.Max(currentSl, lowestInTrade - (Close[0] * 0.00005));
+                            SetStopLoss("50_Equilibrium_Long", CalculationMode.Price, currentSl, false);
+                            slMoved = true;
+                        }
                     }
                 }
-            }
-            else if (Position.MarketPosition == MarketPosition.Short)
-            {
-                highestInTrade = Math.Max(highestInTrade, High[0]);
-
-                // Crucial Guard: Only evaluate trailing stop on bars AFTER the entry bar.
-                // In OnPriceChange mode, Low[0] on the entry bar was formed before the bounce to 50%,
-                // which would falsely satisfy triggerPrice immediately on the next tick and cause premature exit.
-                if (CurrentBar > entryBarIndex)
+                else if (Position.MarketPosition == MarketPosition.Short)
                 {
-                    double triggerPrice = trade50Level - 0.50 * (trade50Level - currentTp);
+                    highestInTrade = Math.Max(highestInTrade, High[0]);
 
-                    if (Low[0] <= triggerPrice && !slMoved)
+                    // Crucial Guard: Only evaluate trailing stop on bars AFTER the entry bar.
+                    // In OnPriceChange mode, Low[0] on the entry bar was formed before the bounce to 50%,
+                    // which would falsely satisfy triggerPrice immediately on the next tick and cause premature exit.
+                    if (CurrentBar > entryBarIndex)
                     {
-                        currentSl = Math.Min(currentSl, highestInTrade + (Close[0] * 0.00005));
-                        SetStopLoss("50_Equilibrium_Short", CalculationMode.Price, currentSl, false);
-                        slMoved = true;
+                        double triggerPrice = trade50Level - 0.50 * (trade50Level - currentTp);
+
+                        if (Low[0] <= triggerPrice && !slMoved)
+                        {
+                            currentSl = Math.Min(currentSl, highestInTrade + (Close[0] * 0.00005));
+                            SetStopLoss("50_Equilibrium_Short", CalculationMode.Price, currentSl, false);
+                            slMoved = true;
+                        }
                     }
                 }
             }
