@@ -128,7 +128,7 @@ namespace NinjaTrader.NinjaScript.Strategies
                 Contracts                                   = 5;
                 SlippageTicks                               = 0; // Exact market filling price
                 MaxConsecutiveLosses                        = 3;
-                UseMarketOrders                             = true; // Default to Market orders for guaranteed instant fills on 50% touch
+                UseMarketOrders                             = false; // Default to Limit orders at exact 50% equilibrium level
                 UseTrailingStop                             = false; // Disabled by default in production for higher win rate (65.08%) and +$927k PnL
             }
             else if (State == State.Configure)
@@ -173,7 +173,11 @@ namespace NinjaTrader.NinjaScript.Strategies
             if (CurrentBar < BarsRequiredToTrade)
                 return;
 
-            DateTime easternNow = GetEasternTime(Time[0]);
+            // In live trading, use live UTC converted to Eastern Time to avoid bar-timestamp labeling quirks
+            DateTime easternNow = (State == State.Realtime) 
+                ? TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, EasternZone)
+                : GetEasternTime(Time[0]);
+
             int time = ToTime(easternNow);
 
             // 1. HARD FLATTEN AT 11:30 AM EST SHARP (The Morning Sniper Final Model)
@@ -296,8 +300,15 @@ namespace NinjaTrader.NinjaScript.Strategies
                         bullRetraceLow = Low[0];
                         double tradeRange = bullExtreme - bullAnchor;
 
+                        // Proximity Guard: If using Market orders, current price Close[0] must actually be at the 50% level
+                        // and not already blown past to the target or stop
+                        bool isMarketEntrySafe = !UseMarketOrders || (Close[0] <= bull50 + (2 * tick) && Close[0] >= bullAnchor + (2 * tick) && Close[0] < bullExtreme - (4 * tick));
+
+                        // Target Distance Guard: Target must be at least 4 ticks above current market price
+                        bool isTargetValid = bullExtreme >= Close[0] + (4 * tick);
+
                         // Trade Execution Gate: Morning Sniper (09:30 - 11:30 EST)
-                        if (Position.MarketPosition == MarketPosition.Flat && !orderEntryPending && isEntryAllowed && activeBias == "BULL" && tradeRange >= minRange)
+                        if (Position.MarketPosition == MarketPosition.Flat && !orderEntryPending && isEntryAllowed && activeBias == "BULL" && tradeRange >= minRange && isMarketEntrySafe && isTargetValid)
                         {
                             trade50Level = bull50;
                             entryPrice = bull50 + (SlippageTicks * tick);
@@ -413,8 +424,15 @@ namespace NinjaTrader.NinjaScript.Strategies
                         bearRetraceHigh = High[0];
                         double tradeRange = bearAnchor - bearExtreme;
 
+                        // Proximity Guard: If using Market orders, current price Close[0] must actually be at the 50% level
+                        // and not already blown past to the target or stop
+                        bool isMarketEntrySafe = !UseMarketOrders || (Close[0] >= bear50 - (2 * tick) && Close[0] <= bearAnchor - (2 * tick) && Close[0] > bearExtreme + (4 * tick));
+
+                        // Target Distance Guard: Target must be at least 4 ticks below current market price
+                        bool isTargetValid = bearExtreme <= Close[0] - (4 * tick);
+
                         // Trade Execution Gate: Morning Sniper (09:30 - 11:30 EST)
-                        if (Position.MarketPosition == MarketPosition.Flat && !orderEntryPending && isEntryAllowed && activeBias == "BEAR" && tradeRange >= minRange)
+                        if (Position.MarketPosition == MarketPosition.Flat && !orderEntryPending && isEntryAllowed && activeBias == "BEAR" && tradeRange >= minRange && isMarketEntrySafe && isTargetValid)
                         {
                             trade50Level = bear50;
                             entryPrice = bear50 - (SlippageTicks * tick);
