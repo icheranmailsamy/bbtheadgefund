@@ -103,6 +103,21 @@ namespace NinjaTrader.NinjaScript.Strategies
         [Display(Name="Use Trailing Stop", Description="If true, trails stop to pivot after 50% TP progress. If false, maintains full structural anchor stop for maximum win rate (65.1%).", Order=5, GroupName="Parameters")]
         public bool UseTrailingStop { get; set; }
 
+        [NinjaScriptProperty]
+        [Range(4, 400)]
+        [Display(Name="Min Setup Range (Ticks)", Description="Minimum wave expansion range in ticks required to qualify a valid setup (32 ticks = 8.0 pts on NQ/MNQ)", Order=6, GroupName="Parameters")]
+        public int MinSetupRangeTicks { get; set; }
+
+        [NinjaScriptProperty]
+        [Range(1, 100)]
+        [Display(Name="Min Target Distance (Ticks)", Description="Minimum distance in ticks required between 50% entry and target (16 ticks = 4.0 pts on NQ/MNQ)", Order=7, GroupName="Parameters")]
+        public int MinTargetTicks { get; set; }
+
+        [NinjaScriptProperty]
+        [Range(1, 50)]
+        [Display(Name="Stop Buffer (Ticks)", Description="Minimum buffer in ticks from the structural anchor stop required for entry safety (8 ticks = 2.0 pts on NQ/MNQ)", Order=8, GroupName="Parameters")]
+        public int StopBufferTicks { get; set; }
+
         protected override void OnStateChange()
         {
             if (State == State.SetDefaults)
@@ -130,6 +145,9 @@ namespace NinjaTrader.NinjaScript.Strategies
                 MaxConsecutiveLosses                        = 3;
                 UseMarketOrders                             = false; // Default to Limit orders at exact 50% equilibrium level
                 UseTrailingStop                             = false; // Disabled by default in production for higher win rate (65.08%) and +$927k PnL
+                MinSetupRangeTicks                          = 32;    // 32 ticks = 8.0 points (The Morning Sniper standard)
+                MinTargetTicks                              = 16;    // 16 ticks = 4.0 points minimum target distance
+                StopBufferTicks                             = 8;     // 8 ticks = 2.0 points structural anchor buffer
             }
             else if (State == State.Configure)
             {
@@ -243,8 +261,8 @@ namespace NinjaTrader.NinjaScript.Strategies
                 if (activeBias == "BEAR") activeBias = null;
             }
 
-            double minRange = 8.0; // 8.0 points = 32 ticks minimum setup range (trade gate only)
             double tick = TickSize;
+            double minRange = MinSetupRangeTicks * tick; // Configurable minimum setup range (default: 32 ticks = 8.0 pts)
 
             // Bullish State Machine (Pure Market Structure)
             if (bullState == 1)
@@ -301,11 +319,11 @@ namespace NinjaTrader.NinjaScript.Strategies
                         double tradeRange = bullExtreme - bullAnchor;
 
                         // Proximity Guard: Current price Close[0] must be near the 50% level and safely between Anchor and Target
-                        // Forbids entry if price is already blown past to target or within 8 ticks (2.0 pts) of Stop Loss
-                        bool isEntrySafe = (Close[0] >= bullAnchor + (8 * tick)) && (Close[0] <= bullExtreme - (16 * tick));
+                        // Forbids entry if price is already blown past to target or within StopBufferTicks of Stop Loss
+                        bool isEntrySafe = (Close[0] >= bullAnchor + (StopBufferTicks * tick)) && (Close[0] <= bullExtreme - (MinTargetTicks * tick));
 
-                        // Target Distance Guard: Target must be at least 16 ticks (4.0 pts) above entry price
-                        bool isTargetValid = (bullExtreme >= bull50 + (16 * tick));
+                        // Target Distance Guard: Target must be at least MinTargetTicks above 50% entry price
+                        bool isTargetValid = (bullExtreme >= bull50 + (MinTargetTicks * tick));
 
                         // Trade Execution Gate: Morning Sniper (09:30 - 11:30 EST)
                         if (Position.MarketPosition == MarketPosition.Flat && !orderEntryPending && isEntryAllowed && activeBias == "BULL" && tradeRange >= minRange && isEntrySafe && isTargetValid)
@@ -425,11 +443,11 @@ namespace NinjaTrader.NinjaScript.Strategies
                         double tradeRange = bearAnchor - bearExtreme;
 
                         // Proximity Guard: Current price Close[0] must be near the 50% level and safely between Anchor and Target
-                        // Forbids entry if price is already blown past to target or within 8 ticks (2.0 pts) of Stop Loss
-                        bool isEntrySafe = (Close[0] <= bearAnchor - (8 * tick)) && (Close[0] >= bearExtreme + (16 * tick));
+                        // Forbids entry if price is already blown past to target or within StopBufferTicks of Stop Loss
+                        bool isEntrySafe = (Close[0] <= bearAnchor - (StopBufferTicks * tick)) && (Close[0] >= bearExtreme + (MinTargetTicks * tick));
 
-                        // Target Distance Guard: Target must be at least 16 ticks (4.0 pts) below entry price
-                        bool isTargetValid = (bearExtreme <= bear50 - (16 * tick));
+                        // Target Distance Guard: Target must be at least MinTargetTicks below 50% entry price
+                        bool isTargetValid = (bearExtreme <= bear50 - (MinTargetTicks * tick));
 
                         // Trade Execution Gate: Morning Sniper (09:30 - 11:30 EST)
                         if (Position.MarketPosition == MarketPosition.Flat && !orderEntryPending && isEntryAllowed && activeBias == "BEAR" && tradeRange >= minRange && isEntrySafe && isTargetValid)
