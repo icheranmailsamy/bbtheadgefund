@@ -132,7 +132,7 @@ namespace NinjaTrader.NinjaScript.Strategies
                 // Pure Canonical Defaults (Unchanged from canonical_variant_a.py)
                 Contracts                                   = 5;     // 5 MNQ contracts ($10/pt)
                 MinSetupRangeTicks                          = 32;    // 32 ticks = 8.0 points minimum range
-                MaxConsecutiveLosses                        = 3;     // 3 consecutive losses daily stop
+                MaxConsecutiveLosses                        = 0;     // 0 = Disabled (No consecutive loss limit; 11:30 AM EST force close only)
                 LiveMarketOrders                            = true;  // Immediate fill on live 50% touch
             }
             else if (State == State.Configure)
