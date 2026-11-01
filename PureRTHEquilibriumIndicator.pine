@@ -1,37 +1,37 @@
-//@version=5
+//@version=6
 indicator("Pure RTH 50% Equilibrium Engine [Morning Sniper]", shorttitle="50% Equilibrium", overlay=true, max_labels_count=500, max_lines_count=500, max_boxes_count=500)
 
 // ==============================================================================
 // 1. USER INPUTS & STYLING CONTROLS
 // ==============================================================================
 grp_strat   = "Strategy Parameters"
-min_range   = input.float(8.0, "Minimum Setup Range (Points)", minval=1.0, step=0.5, group=grp_strat, tooltip="Minimum distance between wave anchor and extreme (Default: 8.0 pts = 32 ticks)")
+min_range   = input.float(8.0, "Minimum Setup Range (Points)", minval=1.0, step=0.5, group=grp_strat, tooltip="Minimum distance between wave anchor and extreme (Canonical: 8.0 pts = 32 ticks)")
 
 grp_vis     = "Visual Elements & Styling"
 show_arrow  = input.bool(true, "Show Entry Arrows & Labels", group=grp_vis)
 show_exits  = input.bool(true, "Show Exit Badges (TP / SL / Flat)", group=grp_vis)
 show_lines  = input.bool(true, "Show Active TP & SL Bracket Lines", group=grp_vis)
 show_tint   = input.bool(true, "Highlight Morning Sniper Window (09:30 - 11:30 AM EST)", group=grp_vis)
-show_hud    = input.bool(true, "Show Live Status HUD Table", group=grp_vis)
+show_hud    = input.bool(true, "Show Live Status HUD Dashboard", group=grp_vis)
 
-// Modern Minimalist Palette
-col_bull    = #00E676      // Emerald Green
-col_bear    = #FF5252      // Crimson Red
-col_tp      = #00E676      // Take Profit Green
-col_sl      = #FF5252      // Stop Loss Red
-col_flat    = #9E9E9E      // Slate Gray
-col_tint    = color.new(#2962FF, 95) // Subtle killzone blue tint
+// Modern Minimalist Institutional Palette
+color col_bull = #00E676      // Emerald Green
+color col_bear = #FF5252      // Crimson Red
+color col_tp   = #00E676      // Take Profit Green
+color col_sl   = #FF5252      // Stop Loss Red
+color col_flat = #9E9E9E      // Slate Gray
+color col_tint = color.new(#2962FF, 95) // Subtle killzone blue background tint
 
 // ==============================================================================
 // 2. NEW YORK TIMEZONE & SESSION LOGIC (09:30 AM - 11:30 AM EST)
 // ==============================================================================
-t_hour      = hour(time, "America/New_York")
-t_min       = minute(time, "America/New_York")
-t_total_min = t_hour * 60 + t_min
+int t_hour      = hour(time, "America/New_York")
+int t_min       = minute(time, "America/New_York")
+int t_total_min = t_hour * 60 + t_min
 
-is_rth_open   = (t_hour == 9 and t_min == 30)
-is_window     = (t_total_min >= 570 and t_total_min < 690)  // 09:30 to 11:29
-is_1130_close = (t_total_min >= 690)                        // 11:30 AM sharp cutoff
+bool is_rth_open   = (t_hour == 9 and t_min == 30)
+bool is_window     = (t_total_min >= 570 and t_total_min < 690)  // 09:30 to 11:29
+bool is_1130_close = (t_total_min >= 690)                        // 11:30 AM sharp cutoff
 
 // Session tinting
 bgcolor(show_tint and is_window ? col_tint : na, title="Morning Sniper Window")
@@ -81,7 +81,7 @@ var float today_pts         = 0.0
 // 4. HARD FLATTEN AT 11:30 AM EST SHARP
 // ==============================================================================
 if is_1130_close and pos != 0
-    pts_made = (pos == 1) ? (close - entry_price) : (entry_price - close)
+    float pts_made = (pos == 1) ? (close - entry_price) : (entry_price - close)
     today_trades += 1
     today_pts    += pts_made
     if pts_made > 0
@@ -90,17 +90,19 @@ if is_1130_close and pos != 0
         today_losses += 1
 
     if show_exits
-        txt = "⏱ Flat 11:30\n" + (pts_made >= 0 ? "+" : "") + str.tostring(pts_made, "#.##") + " pts"
+        string txt = "⏱ Flat 11:30\n" + (pts_made >= 0 ? "+" : "") + str.tostring(pts_made, "#.##") + " pts"
         label.new(bar_index, (pos == 1 ? high : low), text=txt, color=col_flat, textcolor=color.white, style=(pos == 1 ? label.style_label_down : label.style_label_up), size=size.small)
 
     if not na(active_tp_line)
         line.set_x2(active_tp_line, bar_index)
+        active_tp_line := na
     if not na(active_sl_line)
         line.set_x2(active_sl_line, bar_index)
+        active_sl_line := na
 
-    pos := 0
-    bull_state := 0
-    bear_state := 0
+    pos         := 0
+    bull_state  := 0
+    bear_state  := 0
     active_bias := "NONE"
 
 // ==============================================================================
@@ -142,19 +144,21 @@ if pos == 1 and not is_1130_close and not is_rth_open
 
     // Check Take Profit
     if high >= tp_price
-        pts_made = tp_price - entry_price
+        float pts_made = tp_price - entry_price
         today_trades += 1
         today_wins   += 1
         today_pts    += pts_made
 
         if show_exits
-            txt = "✔ TP Hit\n+" + str.tostring(pts_made, "#.##") + " pts"
+            string txt = "✔ TP Hit\n+" + str.tostring(pts_made, "#.##") + " pts"
             label.new(bar_index, tp_price, text=txt, color=col_tp, textcolor=color.black, style=label.style_label_down, size=size.small)
 
         if not na(active_tp_line)
             line.set_x2(active_tp_line, bar_index)
+            active_tp_line := na
         if not na(active_sl_line)
             line.set_x2(active_sl_line, bar_index)
+            active_sl_line := na
 
         bull_anchor  := lowest_in_trade
         bull_extreme := tp_price
@@ -164,19 +168,21 @@ if pos == 1 and not is_1130_close and not is_rth_open
 
     // Check Stop Loss
     else if low <= sl_price
-        pts_made = sl_price - entry_price
+        float pts_made = sl_price - entry_price
         today_trades += 1
         today_losses += 1
         today_pts    += pts_made
 
         if show_exits
-            txt = "✖ SL Hit\n" + str.tostring(pts_made, "#.##") + " pts"
+            string txt = "✖ SL Hit\n" + str.tostring(pts_made, "#.##") + " pts"
             label.new(bar_index, sl_price, text=txt, color=col_sl, textcolor=color.white, style=label.style_label_up, size=size.small)
 
         if not na(active_tp_line)
             line.set_x2(active_tp_line, bar_index)
+            active_tp_line := na
         if not na(active_sl_line)
             line.set_x2(active_sl_line, bar_index)
+            active_sl_line := na
 
         if low >= day_low
             bull_state := 5
@@ -193,19 +199,21 @@ else if pos == -1 and not is_1130_close and not is_rth_open
 
     // Check Take Profit
     if low <= tp_price
-        pts_made = entry_price - tp_price
+        float pts_made = entry_price - tp_price
         today_trades += 1
         today_wins   += 1
         today_pts    += pts_made
 
         if show_exits
-            txt = "✔ TP Hit\n+" + str.tostring(pts_made, "#.##") + " pts"
+            string txt = "✔ TP Hit\n+" + str.tostring(pts_made, "#.##") + " pts"
             label.new(bar_index, tp_price, text=txt, color=col_tp, textcolor=color.black, style=label.style_label_up, size=size.small)
 
         if not na(active_tp_line)
             line.set_x2(active_tp_line, bar_index)
+            active_tp_line := na
         if not na(active_sl_line)
             line.set_x2(active_sl_line, bar_index)
+            active_sl_line := na
 
         bear_anchor  := highest_in_trade
         bear_extreme := tp_price
@@ -215,19 +223,21 @@ else if pos == -1 and not is_1130_close and not is_rth_open
 
     // Check Stop Loss
     else if high >= sl_price
-        pts_made = entry_price - sl_price
+        float pts_made = entry_price - sl_price
         today_trades += 1
         today_losses += 1
         today_pts    += pts_made
 
         if show_exits
-            txt = "✖ SL Hit\n" + str.tostring(pts_made, "#.##") + " pts"
+            string txt = "✖ SL Hit\n" + str.tostring(pts_made, "#.##") + " pts"
             label.new(bar_index, sl_price, text=txt, color=col_sl, textcolor=color.white, style=label.style_label_down, size=size.small)
 
         if not na(active_tp_line)
             line.set_x2(active_tp_line, bar_index)
+            active_tp_line := na
         if not na(active_sl_line)
             line.set_x2(active_sl_line, bar_index)
+            active_sl_line := na
 
         if high <= day_high
             bear_state := 5
@@ -266,7 +276,7 @@ if is_window and not is_rth_open
     if bull_state == 1
         if high > bull_extreme
             bull_extreme := high
-        bull_50 = bull_extreme - 0.50 * (bull_extreme - bull_anchor)
+        float bull_50 = bull_extreme - 0.50 * (bull_extreme - bull_anchor)
         if (bull_extreme - bull_anchor) > syminfo.mintick and low <= bull_50
             bull_state := 2
             bull_lowest_w1 := low
@@ -293,29 +303,29 @@ if is_window and not is_rth_open
         else
             if high > bull_extreme
                 bull_extreme := high
-            bull_50 = bull_extreme - 0.50 * (bull_extreme - bull_anchor)
+            float bull_50 = bull_extreme - 0.50 * (bull_extreme - bull_anchor)
             if (bull_extreme - bull_anchor) > syminfo.mintick and low <= bull_50
                 bull_state := 4
                 bull_retrace_low := low
-                trade_range = bull_extreme - bull_anchor
+                float trade_range = bull_extreme - bull_anchor
 
                 // Canonical Entry Qualification
                 if pos == 0 and active_bias == "BULL" and trade_range >= min_range
                     pos             := 1
                     entry_price     := bull_50
-                    buffer          := close * 0.00005
+                    float buffer    := close * 0.00005
                     sl_price        := bull_anchor - buffer
                     tp_price        := bull_extreme
                     lowest_in_trade := low
                     entry_bar_idx   := bar_index
 
                     if show_arrow
-                        txt = "▲ LONG\n" + str.tostring(entry_price, "#.##")
-                        label.new(bar_index, low - (high - low)*0.2, text=txt, color=col_bull, textcolor=color.black, style=label.style_label_up, size=size.small)
+                        string txt = "▲ LONG\n" + str.tostring(entry_price, "#.##")
+                        label.new(bar_index, low, text=txt, color=col_bull, textcolor=color.black, style=label.style_label_up, yloc=yloc.belowbar, size=size.small)
 
                     if show_lines
-                        active_tp_line := line.new(bar_index, tp_price, bar_index + 10, tp_price, color=col_tp, width=1, style=line.style_dashed)
-                        active_sl_line := line.new(bar_index, sl_price, bar_index + 10, sl_price, color=col_sl, width=1, style=line.style_dashed)
+                        active_tp_line := line.new(bar_index, tp_price, bar_index + 1, tp_price, color=col_tp, width=1, style=line.style_dashed)
+                        active_sl_line := line.new(bar_index, sl_price, bar_index + 1, sl_price, color=col_sl, width=1, style=line.style_dashed)
 
                     alert("50% Equilibrium LONG Triggered @ " + str.tostring(entry_price), alert.freq_once_per_bar)
 
@@ -345,7 +355,7 @@ if is_window and not is_rth_open
     if bear_state == 1
         if low < bear_extreme
             bear_extreme := low
-        bear_50 = bear_extreme + 0.50 * (bear_anchor - bear_extreme)
+        float bear_50 = bear_extreme + 0.50 * (bear_anchor - bear_extreme)
         if (bear_anchor - bear_extreme) > syminfo.mintick and high >= bear_50
             bear_state := 2
             bear_highest_w1 := high
@@ -372,29 +382,29 @@ if is_window and not is_rth_open
         else
             if low < bear_extreme
                 bear_extreme := low
-            bear_50 = bear_extreme + 0.50 * (bear_anchor - bear_extreme)
+            float bear_50 = bear_extreme + 0.50 * (bear_anchor - bear_extreme)
             if (bear_anchor - bear_extreme) > syminfo.mintick and high >= bear_50
                 bear_state := 4
                 bear_retrace_high := high
-                trade_range = bear_anchor - bear_extreme
+                float trade_range = bear_anchor - bear_extreme
 
                 // Canonical Entry Qualification
                 if pos == 0 and active_bias == "BEAR" and trade_range >= min_range
                     pos              := -1
                     entry_price      := bear_50
-                    buffer           := close * 0.00005
+                    float buffer     := close * 0.00005
                     sl_price         := bear_anchor + buffer
                     tp_price         := bear_extreme
                     highest_in_trade := high
                     entry_bar_idx    := bar_index
 
                     if show_arrow
-                        txt = "▼ SHORT\n" + str.tostring(entry_price, "#.##")
-                        label.new(bar_index, high + (high - low)*0.2, text=txt, color=col_bear, textcolor=color.white, style=label.style_label_down, size=size.small)
+                        string txt = "▼ SHORT\n" + str.tostring(entry_price, "#.##")
+                        label.new(bar_index, high, text=txt, color=col_bear, textcolor=color.white, style=label.style_label_down, yloc=yloc.abovebar, size=size.small)
 
                     if show_lines
-                        active_tp_line := line.new(bar_index, tp_price, bar_index + 10, tp_price, color=col_tp, width=1, style=line.style_dashed)
-                        active_sl_line := line.new(bar_index, sl_price, bar_index + 10, sl_price, color=col_sl, width=1, style=line.style_dashed)
+                        active_tp_line := line.new(bar_index, tp_price, bar_index + 1, tp_price, color=col_tp, width=1, style=line.style_dashed)
+                        active_sl_line := line.new(bar_index, sl_price, bar_index + 1, sl_price, color=col_sl, width=1, style=line.style_dashed)
 
                     alert("50% Equilibrium SHORT Triggered @ " + str.tostring(entry_price), alert.freq_once_per_bar)
 
@@ -434,29 +444,29 @@ var table hud = table.new(position.top_right, 2, 5, bgcolor=color.new(#1E222D, 1
 
 if show_hud and barstate.islast
     // Header
-    table.cell(hud, 0, 0, "50% Equilibrium Engine", bgcolor=color.new(#2962FF, 20), text_color=color.white, text_size=size.small, text_halign=text.halign_left)
-    table.cell(hud, 1, 0, "Morning Sniper", bgcolor=color.new(#2962FF, 20), text_color=#00E676, text_size=size.small, text_halign=text.halign_right)
+    table.cell(hud, 0, 0, "50% Equilibrium Engine", bgcolor=color.new(#2962FF, 20), text_color=color.white, text_size=size.small, text_halign=text.align_left)
+    table.cell(hud, 1, 0, "Morning Sniper v6", bgcolor=color.new(#2962FF, 20), text_color=#00E676, text_size=size.small, text_halign=text.align_right)
 
     // Session Status
-    session_str = is_window ? "ACTIVE (09:30-11:30)" : "CLOSED"
-    session_col = is_window ? col_bull : col_flat
-    table.cell(hud, 0, 1, "Session Window", text_color=#B2B5BE, text_size=size.small, text_halign=text.halign_left)
-    table.cell(hud, 1, 1, session_str, text_color=session_col, text_size=size.small, text_halign=text.halign_right)
+    string session_str = is_window ? "ACTIVE (09:30-11:30)" : "CLOSED"
+    color  session_col = is_window ? col_bull : col_flat
+    table.cell(hud, 0, 1, "Session Window", text_color=#B2B5BE, text_size=size.small, text_halign=text.align_left)
+    table.cell(hud, 1, 1, session_str, text_color=session_col, text_size=size.small, text_halign=text.align_right)
 
     // Market Bias
-    bias_str = active_bias == "BULL" ? "BULLISH (Wave " + str.tostring(bull_state) + ")" : active_bias == "BEAR" ? "BEARISH (Wave " + str.tostring(bear_state) + ")" : "NEUTRAL"
-    bias_col = active_bias == "BULL" ? col_bull : active_bias == "BEAR" ? col_bear : col_flat
-    table.cell(hud, 0, 2, "Structural Bias", text_color=#B2B5BE, text_size=size.small, text_halign=text.halign_left)
-    table.cell(hud, 1, 2, bias_str, text_color=bias_col, text_size=size.small, text_halign=text.halign_right)
+    string bias_str = active_bias == "BULL" ? "BULLISH (Wave " + str.tostring(bull_state) + ")" : active_bias == "BEAR" ? "BEARISH (Wave " + str.tostring(bear_state) + ")" : "NEUTRAL"
+    color  bias_col = active_bias == "BULL" ? col_bull : active_bias == "BEAR" ? col_bear : col_flat
+    table.cell(hud, 0, 2, "Structural Bias", text_color=#B2B5BE, text_size=size.small, text_halign=text.align_left)
+    table.cell(hud, 1, 2, bias_str, text_color=bias_col, text_size=size.small, text_halign=text.align_right)
 
     // Current Position
-    pos_str = pos == 1 ? "LONG @ " + str.tostring(entry_price, "#.##") : pos == -1 ? "SHORT @ " + str.tostring(entry_price, "#.##") : "FLAT"
-    pos_col = pos == 1 ? col_bull : pos == -1 ? col_bear : color.white
-    table.cell(hud, 0, 3, "Active Position", text_color=#B2B5BE, text_size=size.small, text_halign=text.halign_left)
-    table.cell(hud, 1, 3, pos_str, text_color=pos_col, text_size=size.small, text_halign=text.halign_right)
+    string pos_str = pos == 1 ? "LONG @ " + str.tostring(entry_price, "#.##") : pos == -1 ? "SHORT @ " + str.tostring(entry_price, "#.##") : "FLAT"
+    color  pos_col = pos == 1 ? col_bull : pos == -1 ? col_bear : color.white
+    table.cell(hud, 0, 3, "Active Position", text_color=#B2B5BE, text_size=size.small, text_halign=text.align_left)
+    table.cell(hud, 1, 3, pos_str, text_color=pos_col, text_size=size.small, text_halign=text.align_right)
 
     // Today's Performance
-    perf_str = str.tostring(today_trades) + " Trades (" + str.tostring(today_wins) + "W / " + str.tostring(today_losses) + "L) | " + (today_pts >= 0 ? "+" : "") + str.tostring(today_pts, "#.##") + " pts"
-    perf_col = today_pts >= 0 ? col_bull : col_bear
-    table.cell(hud, 0, 4, "Today's Session", text_color=#B2B5BE, text_size=size.small, text_halign=text.halign_left)
-    table.cell(hud, 1, 4, perf_str, text_color=perf_col, text_size=size.small, text_halign=text.halign_right)
+    string perf_str = str.tostring(today_trades) + " Trades (" + str.tostring(today_wins) + "W / " + str.tostring(today_losses) + "L) | " + (today_pts >= 0 ? "+" : "") + str.tostring(today_pts, "#.##") + " pts"
+    color  perf_col = today_pts >= 0 ? col_bull : col_bear
+    table.cell(hud, 0, 4, "Today's Session", text_color=#B2B5BE, text_size=size.small, text_halign=text.align_left)
+    table.cell(hud, 1, 4, perf_str, text_color=perf_col, text_size=size.small, text_halign=text.align_right)
