@@ -312,7 +312,13 @@ namespace NinjaTrader.NinjaScript.Strategies
                     if (High[0] > bullExtreme) bullExtreme = High[0];
                     double bull50 = bullExtreme - 0.50 * (bullExtreme - bullAnchor);
 
-                    if ((bullExtreme - bullAnchor) > tick && Low[0] <= bull50)
+                    // Touch Condition: If using Market Orders, live price Close[0] must actively touch the 50% level right now.
+                    // If Limit Orders, candle Low[0] <= bull50 validates retracement touch.
+                    bool isAt50Touch = UseMarketOrders 
+                        ? (Close[0] <= bull50 + (Math.Max(SlippageTicks, 1) * tick))
+                        : (Low[0] <= bull50);
+
+                    if ((bullExtreme - bullAnchor) > tick && isAt50Touch)
                     {
                         bullState = 4;
                         bullRetraceLow = Low[0];
@@ -436,7 +442,13 @@ namespace NinjaTrader.NinjaScript.Strategies
                     if (Low[0] < bearExtreme) bearExtreme = Low[0];
                     double bear50 = bearExtreme + 0.50 * (bearAnchor - bearExtreme);
 
-                    if ((bearAnchor - bearExtreme) > tick && High[0] >= bear50)
+                    // Touch Condition: If using Market Orders, live price Close[0] must actively touch the 50% level right now.
+                    // If Limit Orders, candle High[0] >= bear50 validates retracement touch.
+                    bool isAt50Touch = UseMarketOrders 
+                        ? (Close[0] >= bear50 - (Math.Max(SlippageTicks, 1) * tick))
+                        : (High[0] >= bear50);
+
+                    if ((bearAnchor - bearExtreme) > tick && isAt50Touch)
                     {
                         bearState = 4;
                         bearRetraceHigh = High[0];
