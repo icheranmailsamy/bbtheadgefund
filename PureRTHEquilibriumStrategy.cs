@@ -596,7 +596,8 @@ namespace NinjaTrader.NinjaScript.Strategies
                             {
                                 bullState = 0;
                             }
-                            activeBias = null;
+                            // Seamless bias transition: If opposing bearish wave has confirmed, preserve BEAR bias
+                            activeBias = (bearState >= 3) ? "BEAR" : null;
                         }
                         else if (closedDirection == MarketPosition.Short)
                         {
@@ -610,7 +611,8 @@ namespace NinjaTrader.NinjaScript.Strategies
                             {
                                 bearState = 0;
                             }
-                            activeBias = null;
+                            // Seamless bias transition: If opposing bullish wave has confirmed, preserve BULL bias
+                            activeBias = (bullState >= 3) ? "BULL" : null;
                         }
                     }
                     else
