@@ -1,0 +1,462 @@
+//@version=5
+indicator("Pure RTH 50% Equilibrium Engine [Morning Sniper]", shorttitle="50% Equilibrium", overlay=true, max_labels_count=500, max_lines_count=500, max_boxes_count=500)
+
+// ==============================================================================
+// 1. USER INPUTS & STYLING CONTROLS
+// ==============================================================================
+grp_strat   = "Strategy Parameters"
+min_range   = input.float(8.0, "Minimum Setup Range (Points)", minval=1.0, step=0.5, group=grp_strat, tooltip="Minimum distance between wave anchor and extreme (Default: 8.0 pts = 32 ticks)")
+
+grp_vis     = "Visual Elements & Styling"
+show_arrow  = input.bool(true, "Show Entry Arrows & Labels", group=grp_vis)
+show_exits  = input.bool(true, "Show Exit Badges (TP / SL / Flat)", group=grp_vis)
+show_lines  = input.bool(true, "Show Active TP & SL Bracket Lines", group=grp_vis)
+show_tint   = input.bool(true, "Highlight Morning Sniper Window (09:30 - 11:30 AM EST)", group=grp_vis)
+show_hud    = input.bool(true, "Show Live Status HUD Table", group=grp_vis)
+
+// Modern Minimalist Palette
+col_bull    = #00E676      // Emerald Green
+col_bear    = #FF5252      // Crimson Red
+col_tp      = #00E676      // Take Profit Green
+col_sl      = #FF5252      // Stop Loss Red
+col_flat    = #9E9E9E      // Slate Gray
+col_tint    = color.new(#2962FF, 95) // Subtle killzone blue tint
+
+// ==============================================================================
+// 2. NEW YORK TIMEZONE & SESSION LOGIC (09:30 AM - 11:30 AM EST)
+// ==============================================================================
+t_hour      = hour(time, "America/New_York")
+t_min       = minute(time, "America/New_York")
+t_total_min = t_hour * 60 + t_min
+
+is_rth_open   = (t_hour == 9 and t_min == 30)
+is_window     = (t_total_min >= 570 and t_total_min < 690)  // 09:30 to 11:29
+is_1130_close = (t_total_min >= 690)                        // 11:30 AM sharp cutoff
+
+// Session tinting
+bgcolor(show_tint and is_window ? col_tint : na, title="Morning Sniper Window")
+
+// ==============================================================================
+// 3. PERSISTENT STATE MACHINE VARIABLES (ZERO-REPAINT ARCHITECTURE)
+// ==============================================================================
+var float day_high          = 0.0
+var float day_low           = 1e9
+
+var int   bull_state        = 0
+var float bull_anchor       = 0.0
+var float bull_extreme      = 0.0
+var float bull_lowest_w1    = 0.0
+var float bull_retrace_low  = 0.0
+var float bull_stoprun_low  = 0.0
+
+var int   bear_state        = 0
+var float bear_anchor       = 0.0
+var float bear_extreme      = 0.0
+var float bear_highest_w1   = 0.0
+var float bear_retrace_high = 0.0
+var float bear_stoprun_high = 0.0
+
+var string active_bias      = "NONE"
+
+// Open Trade Tracking
+var int   pos               = 0    // +1 = Long, -1 = Short, 0 = Flat
+var float entry_price       = 0.0
+var float sl_price          = 0.0
+var float tp_price          = 0.0
+var float lowest_in_trade   = 0.0
+var float highest_in_trade  = 0.0
+var int   entry_bar_idx     = 0
+
+// Line tracking references
+var line  active_tp_line    = na
+var line  active_sl_line    = na
+
+// Daily performance tracking for HUD
+var int   today_trades      = 0
+var int   today_wins        = 0
+var int   today_losses      = 0
+var float today_pts         = 0.0
+
+// ==============================================================================
+// 4. HARD FLATTEN AT 11:30 AM EST SHARP
+// ==============================================================================
+if is_1130_close and pos != 0
+    pts_made = (pos == 1) ? (close - entry_price) : (entry_price - close)
+    today_trades += 1
+    today_pts    += pts_made
+    if pts_made > 0
+        today_wins += 1
+    else
+        today_losses += 1
+
+    if show_exits
+        txt = "⏱ Flat 11:30\n" + (pts_made >= 0 ? "+" : "") + str.tostring(pts_made, "#.##") + " pts"
+        label.new(bar_index, (pos == 1 ? high : low), text=txt, color=col_flat, textcolor=color.white, style=(pos == 1 ? label.style_label_down : label.style_label_up), size=size.small)
+
+    if not na(active_tp_line)
+        line.set_x2(active_tp_line, bar_index)
+    if not na(active_sl_line)
+        line.set_x2(active_sl_line, bar_index)
+
+    pos := 0
+    bull_state := 0
+    bear_state := 0
+    active_bias := "NONE"
+
+// ==============================================================================
+// 5. 09:30 AM EST NYSE OPENING BELL RESET
+// ==============================================================================
+if is_rth_open
+    day_high            := high
+    day_low             := low
+    bull_state          := 1
+    bull_anchor         := day_low
+    bull_extreme        := day_low
+    bull_lowest_w1      := day_low
+    bull_retrace_low    := day_low
+    bull_stoprun_low    := day_low
+
+    bear_state          := 1
+    bear_anchor         := day_high
+    bear_extreme        := day_high
+    bear_highest_w1     := day_high
+    bear_retrace_high   := day_high
+    bear_stoprun_high   := day_high
+
+    active_bias         := "NONE"
+    pos                 := 0
+    lowest_in_trade     := 0.0
+    highest_in_trade    := 0.0
+
+    // Reset daily HUD stats
+    today_trades        := 0
+    today_wins          := 0
+    today_losses        := 0
+    today_pts           := 0.0
+
+// ==============================================================================
+// 6. IN-TRADE MANAGEMENT & EXIT LOGIC (FORWARD-BAR EVALUATION)
+// ==============================================================================
+if pos == 1 and not is_1130_close and not is_rth_open
+    lowest_in_trade := math.min(lowest_in_trade, low)
+
+    // Check Take Profit
+    if high >= tp_price
+        pts_made = tp_price - entry_price
+        today_trades += 1
+        today_wins   += 1
+        today_pts    += pts_made
+
+        if show_exits
+            txt = "✔ TP Hit\n+" + str.tostring(pts_made, "#.##") + " pts"
+            label.new(bar_index, tp_price, text=txt, color=col_tp, textcolor=color.black, style=label.style_label_down, size=size.small)
+
+        if not na(active_tp_line)
+            line.set_x2(active_tp_line, bar_index)
+        if not na(active_sl_line)
+            line.set_x2(active_sl_line, bar_index)
+
+        bull_anchor  := lowest_in_trade
+        bull_extreme := tp_price
+        active_bias  := "BULL"
+        bull_state   := 3
+        pos          := 0
+
+    // Check Stop Loss
+    else if low <= sl_price
+        pts_made = sl_price - entry_price
+        today_trades += 1
+        today_losses += 1
+        today_pts    += pts_made
+
+        if show_exits
+            txt = "✖ SL Hit\n" + str.tostring(pts_made, "#.##") + " pts"
+            label.new(bar_index, sl_price, text=txt, color=col_sl, textcolor=color.white, style=label.style_label_up, size=size.small)
+
+        if not na(active_tp_line)
+            line.set_x2(active_tp_line, bar_index)
+        if not na(active_sl_line)
+            line.set_x2(active_sl_line, bar_index)
+
+        if low >= day_low
+            bull_state := 5
+            bull_stoprun_low := low
+        else
+            bull_state := 0
+
+        // SEAMLESS OPPOSING WAVE TRANSITION
+        active_bias := (bear_state >= 3) ? "BEAR" : "NONE"
+        pos         := 0
+
+else if pos == -1 and not is_1130_close and not is_rth_open
+    highest_in_trade := math.max(highest_in_trade, high)
+
+    // Check Take Profit
+    if low <= tp_price
+        pts_made = entry_price - tp_price
+        today_trades += 1
+        today_wins   += 1
+        today_pts    += pts_made
+
+        if show_exits
+            txt = "✔ TP Hit\n+" + str.tostring(pts_made, "#.##") + " pts"
+            label.new(bar_index, tp_price, text=txt, color=col_tp, textcolor=color.black, style=label.style_label_up, size=size.small)
+
+        if not na(active_tp_line)
+            line.set_x2(active_tp_line, bar_index)
+        if not na(active_sl_line)
+            line.set_x2(active_sl_line, bar_index)
+
+        bear_anchor  := highest_in_trade
+        bear_extreme := tp_price
+        active_bias  := "BEAR"
+        bear_state   := 3
+        pos          := 0
+
+    // Check Stop Loss
+    else if high >= sl_price
+        pts_made = entry_price - sl_price
+        today_trades += 1
+        today_losses += 1
+        today_pts    += pts_made
+
+        if show_exits
+            txt = "✖ SL Hit\n" + str.tostring(pts_made, "#.##") + " pts"
+            label.new(bar_index, sl_price, text=txt, color=col_sl, textcolor=color.white, style=label.style_label_down, size=size.small)
+
+        if not na(active_tp_line)
+            line.set_x2(active_tp_line, bar_index)
+        if not na(active_sl_line)
+            line.set_x2(active_sl_line, bar_index)
+
+        if high <= day_high
+            bear_state := 5
+            bear_stoprun_high := high
+        else
+            bear_state := 0
+
+        // SEAMLESS OPPOSING WAVE TRANSITION
+        active_bias := (bull_state >= 3) ? "BULL" : "NONE"
+        pos         := 0
+
+// ==============================================================================
+// 7. SESSION HIGH / LOW TRACKING
+// ==============================================================================
+if low < day_low
+    day_low      := low
+    bull_state   := 1
+    bull_anchor  := day_low
+    bull_extreme := day_low
+    if active_bias == "BULL"
+        active_bias := "NONE"
+
+if high > day_high
+    day_high     := high
+    bear_state   := 1
+    bear_anchor  := day_high
+    bear_extreme := day_high
+    if active_bias == "BEAR"
+        active_bias := "NONE"
+
+// ==============================================================================
+// 8. 5-STATE EXPANSION ENGINE & 50% EQUILIBRIUM ENTRIES
+// ==============================================================================
+if is_window and not is_rth_open
+    // --- BULLISH STATE MACHINE ---
+    if bull_state == 1
+        if high > bull_extreme
+            bull_extreme := high
+        bull_50 = bull_extreme - 0.50 * (bull_extreme - bull_anchor)
+        if (bull_extreme - bull_anchor) > syminfo.mintick and low <= bull_50
+            bull_state := 2
+            bull_lowest_w1 := low
+
+    else if bull_state == 2
+        bull_lowest_w1 := math.min(bull_lowest_w1, low)
+        if low < bull_anchor
+            bull_state := 0
+            if active_bias == "BULL"
+                active_bias := "NONE"
+        else if high >= bull_extreme
+            bull_state   := 3
+            bull_anchor  := bull_lowest_w1
+            bull_extreme := high
+            active_bias  := "BULL"
+
+    else if bull_state == 3
+        if low < bull_anchor
+            bull_state := (low >= day_low) ? 5 : 0
+            if bull_state == 5
+                bull_stoprun_low := low
+            if active_bias == "BULL"
+                active_bias := "NONE"
+        else
+            if high > bull_extreme
+                bull_extreme := high
+            bull_50 = bull_extreme - 0.50 * (bull_extreme - bull_anchor)
+            if (bull_extreme - bull_anchor) > syminfo.mintick and low <= bull_50
+                bull_state := 4
+                bull_retrace_low := low
+                trade_range = bull_extreme - bull_anchor
+
+                // Canonical Entry Qualification
+                if pos == 0 and active_bias == "BULL" and trade_range >= min_range
+                    pos             := 1
+                    entry_price     := bull_50
+                    buffer          := close * 0.00005
+                    sl_price        := bull_anchor - buffer
+                    tp_price        := bull_extreme
+                    lowest_in_trade := low
+                    entry_bar_idx   := bar_index
+
+                    if show_arrow
+                        txt = "▲ LONG\n" + str.tostring(entry_price, "#.##")
+                        label.new(bar_index, low - (high - low)*0.2, text=txt, color=col_bull, textcolor=color.black, style=label.style_label_up, size=size.small)
+
+                    if show_lines
+                        active_tp_line := line.new(bar_index, tp_price, bar_index + 10, tp_price, color=col_tp, width=1, style=line.style_dashed)
+                        active_sl_line := line.new(bar_index, sl_price, bar_index + 10, sl_price, color=col_sl, width=1, style=line.style_dashed)
+
+                    alert("50% Equilibrium LONG Triggered @ " + str.tostring(entry_price), alert.freq_once_per_bar)
+
+    else if bull_state == 4
+        bull_retrace_low := math.min(bull_retrace_low, low)
+        if low < bull_anchor
+            bull_state := (low >= day_low) ? 5 : 0
+            if bull_state == 5
+                bull_stoprun_low := low
+            if active_bias == "BULL"
+                active_bias := "NONE"
+        else if high >= bull_extreme
+            bull_state   := 3
+            bull_anchor  := bull_retrace_low
+            bull_extreme := high
+            active_bias  := "BULL"
+
+    else if bull_state == 5
+        bull_stoprun_low := math.min(bull_stoprun_low, low)
+        if high >= bull_extreme
+            bull_state   := 3
+            bull_anchor  := bull_stoprun_low
+            bull_extreme := high
+            active_bias  := "BULL"
+
+    // --- BEARISH STATE MACHINE ---
+    if bear_state == 1
+        if low < bear_extreme
+            bear_extreme := low
+        bear_50 = bear_extreme + 0.50 * (bear_anchor - bear_extreme)
+        if (bear_anchor - bear_extreme) > syminfo.mintick and high >= bear_50
+            bear_state := 2
+            bear_highest_w1 := high
+
+    else if bear_state == 2
+        bear_highest_w1 := math.max(bear_highest_w1, high)
+        if high > bear_anchor
+            bear_state := 0
+            if active_bias == "BEAR"
+                active_bias := "NONE"
+        else if low <= bear_extreme
+            bear_state   := 3
+            bear_anchor  := bear_highest_w1
+            bear_extreme := low
+            active_bias  := "BEAR"
+
+    else if bear_state == 3
+        if high > bear_anchor
+            bear_state := (high <= day_high) ? 5 : 0
+            if bear_state == 5
+                bear_stoprun_high := high
+            if active_bias == "BEAR"
+                active_bias := "NONE"
+        else
+            if low < bear_extreme
+                bear_extreme := low
+            bear_50 = bear_extreme + 0.50 * (bear_anchor - bear_extreme)
+            if (bear_anchor - bear_extreme) > syminfo.mintick and high >= bear_50
+                bear_state := 4
+                bear_retrace_high := high
+                trade_range = bear_anchor - bear_extreme
+
+                // Canonical Entry Qualification
+                if pos == 0 and active_bias == "BEAR" and trade_range >= min_range
+                    pos              := -1
+                    entry_price      := bear_50
+                    buffer           := close * 0.00005
+                    sl_price         := bear_anchor + buffer
+                    tp_price         := bear_extreme
+                    highest_in_trade := high
+                    entry_bar_idx    := bar_index
+
+                    if show_arrow
+                        txt = "▼ SHORT\n" + str.tostring(entry_price, "#.##")
+                        label.new(bar_index, high + (high - low)*0.2, text=txt, color=col_bear, textcolor=color.white, style=label.style_label_down, size=size.small)
+
+                    if show_lines
+                        active_tp_line := line.new(bar_index, tp_price, bar_index + 10, tp_price, color=col_tp, width=1, style=line.style_dashed)
+                        active_sl_line := line.new(bar_index, sl_price, bar_index + 10, sl_price, color=col_sl, width=1, style=line.style_dashed)
+
+                    alert("50% Equilibrium SHORT Triggered @ " + str.tostring(entry_price), alert.freq_once_per_bar)
+
+    else if bear_state == 4
+        bear_retrace_high := math.max(bear_retrace_high, high)
+        if high > bear_anchor
+            bear_state := (high <= day_high) ? 5 : 0
+            if bear_state == 5
+                bear_stoprun_high := high
+            if active_bias == "BEAR"
+                active_bias := "NONE"
+        else if low <= bear_extreme
+            bear_state   := 3
+            bear_anchor  := bear_retrace_high
+            bear_extreme := low
+            active_bias  := "BEAR"
+
+    else if bear_state == 5
+        bear_stoprun_high := math.max(bear_stoprun_high, high)
+        if low <= bear_extreme
+            bear_state   := 3
+            bear_anchor  := bear_stoprun_high
+            bear_extreme := low
+            active_bias  := "BEAR"
+
+// Extend active lines to current bar while in trade
+if pos != 0 and show_lines
+    if not na(active_tp_line)
+        line.set_x2(active_tp_line, bar_index)
+    if not na(active_sl_line)
+        line.set_x2(active_sl_line, bar_index)
+
+// ==============================================================================
+// 9. MODERN HUD STATUS DASHBOARD (TOP RIGHT)
+// ==============================================================================
+var table hud = table.new(position.top_right, 2, 5, bgcolor=color.new(#1E222D, 15), border_color=color.new(#363A45, 50), border_width=1)
+
+if show_hud and barstate.islast
+    // Header
+    table.cell(hud, 0, 0, "50% Equilibrium Engine", bgcolor=color.new(#2962FF, 20), text_color=color.white, text_size=size.small, text_halign=text.halign_left)
+    table.cell(hud, 1, 0, "Morning Sniper", bgcolor=color.new(#2962FF, 20), text_color=#00E676, text_size=size.small, text_halign=text.halign_right)
+
+    // Session Status
+    session_str = is_window ? "ACTIVE (09:30-11:30)" : "CLOSED"
+    session_col = is_window ? col_bull : col_flat
+    table.cell(hud, 0, 1, "Session Window", text_color=#B2B5BE, text_size=size.small, text_halign=text.halign_left)
+    table.cell(hud, 1, 1, session_str, text_color=session_col, text_size=size.small, text_halign=text.halign_right)
+
+    // Market Bias
+    bias_str = active_bias == "BULL" ? "BULLISH (Wave " + str.tostring(bull_state) + ")" : active_bias == "BEAR" ? "BEARISH (Wave " + str.tostring(bear_state) + ")" : "NEUTRAL"
+    bias_col = active_bias == "BULL" ? col_bull : active_bias == "BEAR" ? col_bear : col_flat
+    table.cell(hud, 0, 2, "Structural Bias", text_color=#B2B5BE, text_size=size.small, text_halign=text.halign_left)
+    table.cell(hud, 1, 2, bias_str, text_color=bias_col, text_size=size.small, text_halign=text.halign_right)
+
+    // Current Position
+    pos_str = pos == 1 ? "LONG @ " + str.tostring(entry_price, "#.##") : pos == -1 ? "SHORT @ " + str.tostring(entry_price, "#.##") : "FLAT"
+    pos_col = pos == 1 ? col_bull : pos == -1 ? col_bear : color.white
+    table.cell(hud, 0, 3, "Active Position", text_color=#B2B5BE, text_size=size.small, text_halign=text.halign_left)
+    table.cell(hud, 1, 3, pos_str, text_color=pos_col, text_size=size.small, text_halign=text.halign_right)
+
+    // Today's Performance
+    perf_str = str.tostring(today_trades) + " Trades (" + str.tostring(today_wins) + "W / " + str.tostring(today_losses) + "L) | " + (today_pts >= 0 ? "+" : "") + str.tostring(today_pts, "#.##") + " pts"
+    perf_col = today_pts >= 0 ? col_bull : col_bear
+    table.cell(hud, 0, 4, "Today's Session", text_color=#B2B5BE, text_size=size.small, text_halign=text.halign_left)
+    table.cell(hud, 1, 4, perf_str, text_color=perf_col, text_size=size.small, text_halign=text.halign_right)
