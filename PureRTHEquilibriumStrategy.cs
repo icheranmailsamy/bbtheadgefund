@@ -99,8 +99,8 @@ namespace NinjaTrader.NinjaScript.Strategies
         public int MinSetupRangeTicks { get; set; }
 
         [NinjaScriptProperty]
-        [Range(1, 10)]
-        [Display(Name="Max Consecutive Losses", Description="Daily circuit breaker limit (Canonical: 3 consecutive losses halts day)", Order=3, GroupName="Parameters")]
+        [Range(0, 100)]
+        [Display(Name="Max Consecutive Losses", Description="Daily circuit breaker limit (0 = Disabled / No limit; 3 = Canonical stop)", Order=3, GroupName="Parameters")]
         public int MaxConsecutiveLosses { get; set; }
 
         [NinjaScriptProperty]
@@ -577,7 +577,7 @@ namespace NinjaTrader.NinjaScript.Strategies
                     if (!isWin)
                     {
                         consecutiveLossCount++;
-                        if (consecutiveLossCount >= MaxConsecutiveLosses)
+                        if (MaxConsecutiveLosses > 0 && consecutiveLossCount >= MaxConsecutiveLosses)
                         {
                             dayHalted = true;
                             Print(string.Format("{0} EST - Circuit Breaker Tripped: {1} consecutive losses reached today. Halting trading until tomorrow 09:30 AM EST.", GetEasternTime(Time[0]), consecutiveLossCount));
