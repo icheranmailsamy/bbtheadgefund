@@ -349,7 +349,10 @@ namespace NinjaTrader.NinjaScript.Strategies
                             SetStopLoss("50_Equilibrium_Long", CalculationMode.Price, currentSl, false);
                             SetProfitTarget("50_Equilibrium_Long", CalculationMode.Price, currentTp);
 
-                            if (UseMarketOrders)
+                            // In Live Realtime, submit Market order for guaranteed instant fill on touch.
+                            // In Historical backtest (Strategy Analyzer), submit Limit order at entryPrice so the engine
+                            // fills at the exact 50% price rather than penalizing with artificial bar-close execution.
+                            if (UseMarketOrders && State == State.Realtime)
                                 EnterLong(Contracts, "50_Equilibrium_Long");
                             else
                                 EnterLongLimit(Contracts, entryPrice, "50_Equilibrium_Long");
@@ -481,7 +484,10 @@ namespace NinjaTrader.NinjaScript.Strategies
                             SetStopLoss("50_Equilibrium_Short", CalculationMode.Price, currentSl, false);
                             SetProfitTarget("50_Equilibrium_Short", CalculationMode.Price, currentTp);
 
-                            if (UseMarketOrders)
+                            // In Live Realtime, submit Market order for guaranteed instant fill on touch.
+                            // In Historical backtest (Strategy Analyzer), submit Limit order at entryPrice so the engine
+                            // fills at the exact 50% price rather than penalizing with artificial bar-close execution.
+                            if (UseMarketOrders && State == State.Realtime)
                                 EnterShort(Contracts, "50_Equilibrium_Short");
                             else
                                 EnterShortLimit(Contracts, entryPrice, "50_Equilibrium_Short");
