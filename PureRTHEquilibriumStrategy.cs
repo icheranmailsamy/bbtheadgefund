@@ -312,9 +312,9 @@ namespace NinjaTrader.NinjaScript.Strategies
                     if (High[0] > bullExtreme) bullExtreme = High[0];
                     double bull50 = bullExtreme - 0.50 * (bullExtreme - bullAnchor);
 
-                    // Touch Condition: If using Market Orders, live price Close[0] must actively touch the 50% level right now.
-                    // If Limit Orders, candle Low[0] <= bull50 validates retracement touch.
-                    bool isAt50Touch = UseMarketOrders 
+                    // Touch Condition: In Realtime with Market Orders, live price Close[0] must actively touch 50%.
+                    // In Historical backtests (Strategy Analyzer), candle Low[0] <= bull50 validates the 50% touch.
+                    bool isAt50Touch = (State == State.Realtime && UseMarketOrders)
                         ? (Close[0] <= bull50 + (Math.Max(SlippageTicks, 1) * tick))
                         : (Low[0] <= bull50);
 
@@ -324,9 +324,11 @@ namespace NinjaTrader.NinjaScript.Strategies
                         bullRetraceLow = Low[0];
                         double tradeRange = bullExtreme - bullAnchor;
 
-                        // Proximity Guard: Current price Close[0] must be near the 50% level and safely between Anchor and Target
-                        // Forbids entry if price is already blown past to target or within StopBufferTicks of Stop Loss
-                        bool isEntrySafe = (Close[0] >= bullAnchor + (StopBufferTicks * tick)) && (Close[0] <= bullExtreme - (MinTargetTicks * tick));
+                        // Proximity Guard: In Realtime, verify live tick Close[0] is safely between Anchor and Target.
+                        // In Historical bars, entry occurs at bull50 which is geometrically centered.
+                        bool isEntrySafe = (State == State.Realtime)
+                            ? (Close[0] >= bullAnchor + (StopBufferTicks * tick)) && (Close[0] <= bullExtreme - (MinTargetTicks * tick))
+                            : true;
 
                         // Target Distance Guard: Target must be at least MinTargetTicks above 50% entry price
                         bool isTargetValid = (bullExtreme >= bull50 + (MinTargetTicks * tick));
@@ -442,9 +444,9 @@ namespace NinjaTrader.NinjaScript.Strategies
                     if (Low[0] < bearExtreme) bearExtreme = Low[0];
                     double bear50 = bearExtreme + 0.50 * (bearAnchor - bearExtreme);
 
-                    // Touch Condition: If using Market Orders, live price Close[0] must actively touch the 50% level right now.
-                    // If Limit Orders, candle High[0] >= bear50 validates retracement touch.
-                    bool isAt50Touch = UseMarketOrders 
+                    // Touch Condition: In Realtime with Market Orders, live price Close[0] must actively touch 50%.
+                    // In Historical backtests (Strategy Analyzer), candle High[0] >= bear50 validates the 50% touch.
+                    bool isAt50Touch = (State == State.Realtime && UseMarketOrders)
                         ? (Close[0] >= bear50 - (Math.Max(SlippageTicks, 1) * tick))
                         : (High[0] >= bear50);
 
@@ -454,9 +456,11 @@ namespace NinjaTrader.NinjaScript.Strategies
                         bearRetraceHigh = High[0];
                         double tradeRange = bearAnchor - bearExtreme;
 
-                        // Proximity Guard: Current price Close[0] must be near the 50% level and safely between Anchor and Target
-                        // Forbids entry if price is already blown past to target or within StopBufferTicks of Stop Loss
-                        bool isEntrySafe = (Close[0] <= bearAnchor - (StopBufferTicks * tick)) && (Close[0] >= bearExtreme + (MinTargetTicks * tick));
+                        // Proximity Guard: In Realtime, verify live tick Close[0] is safely between Anchor and Target.
+                        // In Historical bars, entry occurs at bear50 which is geometrically centered.
+                        bool isEntrySafe = (State == State.Realtime)
+                            ? (Close[0] <= bearAnchor - (StopBufferTicks * tick)) && (Close[0] >= bearExtreme + (MinTargetTicks * tick))
+                            : true;
 
                         // Target Distance Guard: Target must be at least MinTargetTicks below 50% entry price
                         bool isTargetValid = (bearExtreme <= bear50 - (MinTargetTicks * tick));
