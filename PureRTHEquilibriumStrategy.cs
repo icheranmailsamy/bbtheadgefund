@@ -141,13 +141,13 @@ namespace NinjaTrader.NinjaScript.Strategies
                 BarsRequiredToTrade                         = 1;
 
                 Contracts                                   = 5;
-                SlippageTicks                               = 0; // Exact market filling price
+                SlippageTicks                               = 1;     // 1 tick slippage allowance for instant market fill
                 MaxConsecutiveLosses                        = 3;
-                UseMarketOrders                             = false; // Default to Limit orders at exact 50% equilibrium level
+                UseMarketOrders                             = true;  // Default to Market orders on active 50% touch (Zero resting order risk)
                 UseTrailingStop                             = false; // Disabled by default in production for higher win rate (65.08%) and +$927k PnL
                 MinSetupRangeTicks                          = 32;    // 32 ticks = 8.0 points (The Morning Sniper standard)
                 MinTargetTicks                              = 16;    // 16 ticks = 4.0 points minimum target distance
-                StopBufferTicks                             = 8;     // 8 ticks = 2.0 points structural anchor buffer
+                StopBufferTicks                             = 2;     // 2 ticks = 0.50 points structural anchor buffer
             }
             else if (State == State.Configure)
             {
