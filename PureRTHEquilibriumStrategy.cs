@@ -533,13 +533,13 @@ namespace NinjaTrader.NinjaScript.Strategies
                 orderEntryPending = false;
 
                 // 1. Entry execution tracking: Record open position direction and execution fill price
-                if (execution.Order.Name.Contains("50_Equilibrium_Long"))
+                if (execution.Order.OrderAction == OrderAction.Buy)
                 {
                     currentOpenPosition = MarketPosition.Long;
                     entryPrice = price;
                     return;
                 }
-                else if (execution.Order.Name.Contains("50_Equilibrium_Short"))
+                else if (execution.Order.OrderAction == OrderAction.SellShort)
                 {
                     currentOpenPosition = MarketPosition.Short;
                     entryPrice = price;
@@ -557,12 +557,12 @@ namespace NinjaTrader.NinjaScript.Strategies
                     lastProcessedExitOrderId = execution.Order.OrderId;
 
                     MarketPosition closedDirection = currentOpenPosition;
-                    // Fallback to order name or execution if currentOpenPosition was somehow flat
+                    // Fallback to order action or name if currentOpenPosition was somehow flat
                     if (closedDirection == MarketPosition.Flat)
                     {
-                        if (execution.Order.Name.Contains("Long"))
+                        if (execution.Order.OrderAction == OrderAction.Sell || execution.Order.Name.Contains("Long"))
                             closedDirection = MarketPosition.Long;
-                        else if (execution.Order.Name.Contains("Short"))
+                        else if (execution.Order.OrderAction == OrderAction.BuyToCover || execution.Order.Name.Contains("Short"))
                             closedDirection = MarketPosition.Short;
                     }
 
