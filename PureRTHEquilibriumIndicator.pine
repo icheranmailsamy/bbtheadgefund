@@ -313,7 +313,7 @@ if is_window and not is_rth_open
                 if pos == 0 and active_bias == "BULL" and trade_range >= min_range
                     pos             := 1
                     entry_price     := bull_50
-                    float buffer    := close * 0.00005
+                    float buffer    = close * 0.00005
                     sl_price        := bull_anchor - buffer
                     tp_price        := bull_extreme
                     lowest_in_trade := low
@@ -392,7 +392,7 @@ if is_window and not is_rth_open
                 if pos == 0 and active_bias == "BEAR" and trade_range >= min_range
                     pos              := -1
                     entry_price      := bear_50
-                    float buffer     := close * 0.00005
+                    float buffer     = close * 0.00005
                     sl_price         := bear_anchor + buffer
                     tp_price         := bear_extreme
                     highest_in_trade := high
