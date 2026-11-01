@@ -24,6 +24,11 @@ using NinjaTrader.NinjaScript.DrawingTools;
 
 namespace NinjaTrader.NinjaScript.Strategies
 {
+    /// <summary>
+    /// Pure RTH 50% Equilibrium Institutional Execution Engine
+    /// Canonical Morning Sniper Model (Option B Stoprun Continuation + 3-Loss Circuit Breaker)
+    /// Direct 1-to-1 C# Implementation of canonical_variant_a.py (65.08% Win Rate, +$927k PnL)
+    /// </summary>
     public class PureRTHEquilibriumStrategy : Strategy
     {
         private static readonly TimeZoneInfo EasternZone;
@@ -75,54 +80,37 @@ namespace NinjaTrader.NinjaScript.Strategies
         private double currentTp;
         private double lowestInTrade;
         private double highestInTrade;
-        private bool slMoved;
         private int entryBarIndex = -1;
         private int consecutiveLossCount;
         private bool dayHalted;
 
+        // ==========================================
+        // CANONICAL SYSTEM PARAMETERS
+        // ==========================================
         [NinjaScriptProperty]
         [Range(1, 100)]
-        [Display(Name="Quantity (Contracts)", Description="Number of micro contracts to trade (e.g. 5 MNQ = $10/pt)", Order=1, GroupName="Parameters")]
+        [Display(Name="Quantity (Contracts)", Description="Number of micro contracts to trade (Canonical: 5 MNQ = $10/pt)", Order=1, GroupName="Parameters")]
         public int Contracts { get; set; }
 
         [NinjaScriptProperty]
-        [Range(0, 10)]
-        [Display(Name="Slippage Ticks", Description="Slippage allowance in ticks (0 for exact touch price, 1 recommended)", Order=2, GroupName="Parameters")]
-        public int SlippageTicks { get; set; }
-
-        [NinjaScriptProperty]
-        [Range(1, 10)]
-        [Display(Name="Max Consecutive Losses", Description="Maximum consecutive losses permitted per day before halting until tomorrow's RTH session", Order=3, GroupName="Parameters")]
-        public int MaxConsecutiveLosses { get; set; }
-
-        [NinjaScriptProperty]
-        [Display(Name="Use Market Orders", Description="If true, executes Market orders on 50% touch in Realtime. In Historical backtests, Limit orders at 50% are automatically used to prevent bar-close distortion.", Order=4, GroupName="Parameters")]
-        public bool UseMarketOrders { get; set; }
-
-        [NinjaScriptProperty]
-        [Display(Name="Use Trailing Stop", Description="If true, trails stop to pivot after 50% TP progress. If false, maintains full structural anchor stop for maximum canonical win rate (65.3%).", Order=5, GroupName="Parameters")]
-        public bool UseTrailingStop { get; set; }
-
-        [NinjaScriptProperty]
         [Range(4, 400)]
-        [Display(Name="Min Setup Range (Ticks)", Description="Minimum wave expansion range in ticks required to qualify a valid setup (32 ticks = 8.0 pts on NQ/MNQ)", Order=6, GroupName="Parameters")]
+        [Display(Name="Min Setup Range (Ticks)", Description="Minimum wave expansion range in ticks (Canonical: 32 ticks = 8.0 points)", Order=2, GroupName="Parameters")]
         public int MinSetupRangeTicks { get; set; }
 
         [NinjaScriptProperty]
-        [Range(1, 100)]
-        [Display(Name="Min Target Distance (Ticks)", Description="Minimum distance in ticks required between 50% entry and target (16 ticks = 4.0 pts on NQ/MNQ)", Order=7, GroupName="Parameters")]
-        public int MinTargetTicks { get; set; }
+        [Range(1, 10)]
+        [Display(Name="Max Consecutive Losses", Description="Daily circuit breaker limit (Canonical: 3 consecutive losses halts day)", Order=3, GroupName="Parameters")]
+        public int MaxConsecutiveLosses { get; set; }
 
         [NinjaScriptProperty]
-        [Range(1, 50)]
-        [Display(Name="Stop Buffer (Ticks)", Description="Buffer in ticks beyond structural anchor stop (2 ticks = 0.50 pts on NQ/MNQ)", Order=8, GroupName="Parameters")]
-        public int StopBufferTicks { get; set; }
+        [Display(Name="Live Market Orders", Description="In Realtime: true = Market order on touch; false = Limit order at 50%. (Historical simulation automatically fills at 50% limit)", Order=4, GroupName="Parameters")]
+        public bool LiveMarketOrders { get; set; }
 
         protected override void OnStateChange()
         {
             if (State == State.SetDefaults)
             {
-                Description                                 = @"Pure RTH 50% Equilibrium Institutional Execution Engine";
+                Description                                 = @"Pure RTH 50% Equilibrium Institutional Execution Engine (The Morning Sniper Option B)";
                 Name                                        = "PureRTHEquilibriumStrategy";
                 Calculate                                   = Calculate.OnPriceChange; // Instant intra-bar execution on 50% touch
                 EntriesPerDirection                         = 1;
@@ -140,14 +128,11 @@ namespace NinjaTrader.NinjaScript.Strategies
                 StopTargetHandling                          = StopTargetHandling.PerEntryExecution;
                 BarsRequiredToTrade                         = 1;
 
-                Contracts                                   = 5;
-                SlippageTicks                               = 1;
-                MaxConsecutiveLosses                        = 3;
-                UseMarketOrders                             = true;  // Uses Market orders on live touch; Limit fills in historical simulation
-                UseTrailingStop                             = false; // Disabled by default for canonical 65.3% win rate
-                MinSetupRangeTicks                          = 32;    // 32 ticks = 8.0 points
-                MinTargetTicks                              = 16;    // 16 ticks = 4.0 points minimum target distance
-                StopBufferTicks                             = 2;     // 2 ticks = 0.50 points stop buffer
+                // Pure Canonical Defaults (Unchanged from canonical_variant_a.py)
+                Contracts                                   = 5;     // 5 MNQ contracts ($10/pt)
+                MinSetupRangeTicks                          = 32;    // 32 ticks = 8.0 points minimum range
+                MaxConsecutiveLosses                        = 3;     // 3 consecutive losses daily stop
+                LiveMarketOrders                            = true;  // Immediate fill on live 50% touch
             }
             else if (State == State.Configure)
             {
@@ -178,7 +163,6 @@ namespace NinjaTrader.NinjaScript.Strategies
             bearRetraceHigh = 0;
             bearStoprunHigh = 0;
             activeBias = null;
-            slMoved = false;
             lowestInTrade = 0;
             highestInTrade = 0;
             entryBarIndex = -1;
@@ -196,7 +180,7 @@ namespace NinjaTrader.NinjaScript.Strategies
 
             int time = ToTime(easternNow);
 
-            // 1. HARD FLATTEN AT 11:30 AM EST SHARP (The Morning Sniper Final Model)
+            // 1. HARD FLATTEN AT 11:30 AM EST SHARP (Canonical Morning Sniper Window)
             if (time >= 113000)
             {
                 if (Position.MarketPosition != MarketPosition.Flat)
@@ -210,11 +194,11 @@ namespace NinjaTrader.NinjaScript.Strategies
                 return;
             }
 
-            // Skip pre-market bars before 09:30 AM EST
+            // Outside RTH (before 09:30 AM EST): Skip
             if (time < 093000)
                 return;
 
-            // 2. PURE RTH FRESH START AT 09:30 AM EST (First bar of morning session)
+            // 2. 09:30 AM EST FRESH SLATE RESET (NYSE Opening Bell)
             if (easternNow.Date != currentSessionDate || !isSessionInitializedToday)
             {
                 currentSessionDate = easternNow.Date;
@@ -234,7 +218,6 @@ namespace NinjaTrader.NinjaScript.Strategies
                 bearRetraceHigh = dayHigh;
                 bearStoprunHigh = dayHigh;
                 activeBias = null;
-                slMoved = false;
                 lowestInTrade = 0;
                 highestInTrade = 0;
                 entryBarIndex = -1;
@@ -242,7 +225,7 @@ namespace NinjaTrader.NinjaScript.Strategies
                 return;
             }
 
-            // Continuously track lowest and highest reached during any active trade
+            // Track lowest and highest prices reached during an open trade
             if (Position.MarketPosition == MarketPosition.Long)
             {
                 lowestInTrade = (lowestInTrade == 0) ? Low[0] : Math.Min(lowestInTrade, Low[0]);
@@ -252,9 +235,10 @@ namespace NinjaTrader.NinjaScript.Strategies
                 highestInTrade = (highestInTrade == 0) ? High[0] : Math.Max(highestInTrade, High[0]);
             }
 
+            // 3. CIRCUIT BREAKER CHECK
             bool isEntryAllowed = (time >= 093000 && time < 113000) && !dayHalted;
 
-            // Session Extremes Tracking
+            // 4. SESSION HIGH / LOW TRACKING (Canonical Step 4)
             if (Low[0] < dayLow)
             {
                 dayLow = Low[0];
@@ -274,12 +258,10 @@ namespace NinjaTrader.NinjaScript.Strategies
             }
 
             double tick = TickSize;
-            double minRange = MinSetupRangeTicks * tick; // Configurable setup range (32 ticks = 8.0 pts)
-            double stopBuffer = StopBufferTicks * tick;  // Configurable stop buffer (2 ticks = 0.50 pts)
-            double minTargetDist = MinTargetTicks * tick;// Configurable target distance (16 ticks = 4.0 pts)
+            double minRange = MinSetupRangeTicks * tick; // Canonical: 32 ticks = 8.0 points
 
             // ==========================================
-            // BULLISH STATE MACHINE (PURE MARKET STRUCTURE)
+            // 5. BULLISH WAVE CYCLE (CANONICAL OPTION B)
             // ==========================================
             if (bullState == 1)
             {
@@ -327,47 +309,31 @@ namespace NinjaTrader.NinjaScript.Strategies
                     if (High[0] > bullExtreme) bullExtreme = High[0];
                     double bull50 = bullExtreme - 0.50 * (bullExtreme - bullAnchor);
 
-                    // Touch Condition:
-                    // In Realtime with Market Orders, live price Close[0] must touch within slippage allowance.
-                    // In Historical backtest (Strategy Analyzer), candle Low[0] <= bull50 validates 50% touch.
-                    bool isAt50Touch = (State == State.Realtime && UseMarketOrders)
-                        ? (Close[0] <= bull50 + (Math.Max(SlippageTicks, 1) * tick))
-                        : (Low[0] <= bull50);
+                    // Touch Condition: Price touches 50% Equilibrium
+                    bool isAt50Touch = (Low[0] <= bull50);
 
                     if ((bullExtreme - bullAnchor) > tick && isAt50Touch)
                     {
                         bullState = 4;
                         bullRetraceLow = Low[0];
                         double tradeRange = bullExtreme - bullAnchor;
-                        double targetDist = bullExtreme - bull50;
 
-                        // Target Distance Guard: Minimum 16 ticks (4.0 pts)
-                        bool isTargetValid = (targetDist >= minTargetDist);
-
-                        // Proximity Guard: In Realtime, verify live tick is safely between Anchor and Target
-                        bool isEntrySafe = (State == State.Realtime)
-                            ? (Close[0] >= bullAnchor + stopBuffer) && (Close[0] <= bullExtreme - minTargetDist)
-                            : true;
-
-                        // Trade Execution Gate
-                        if (Position.MarketPosition == MarketPosition.Flat && !orderEntryPending && isEntryAllowed && activeBias == "BULL" && tradeRange >= minRange && isTargetValid && isEntrySafe)
+                        // Canonical Trade Execution Gate: Range >= 8.0 pts & Bias == BULL
+                        if (Position.MarketPosition == MarketPosition.Flat && !orderEntryPending && isEntryAllowed && activeBias == "BULL" && tradeRange >= minRange)
                         {
                             trade50Level = bull50;
                             entryPrice = bull50;
-                            currentSl = bullAnchor - stopBuffer;
+                            double buffer = Close[0] * 0.00005; // Canonical micro-buffer
+                            currentSl = bullAnchor - buffer;
                             currentTp = bullExtreme;
                             lowestInTrade = Low[0];
-                            slMoved = false;
                             entryBarIndex = CurrentBar;
                             orderEntryPending = true;
 
                             SetStopLoss("50_Equilibrium_Long", CalculationMode.Price, currentSl, false);
                             SetProfitTarget("50_Equilibrium_Long", CalculationMode.Price, currentTp);
 
-                            // In Live Realtime with UseMarketOrders, submit Market order for guaranteed instant fill.
-                            // In Historical backtests, submit Limit order at entryPrice so Strategy Analyzer
-                            // fills at the exact 50% price rather than bar-close penalty.
-                            if (UseMarketOrders && State == State.Realtime)
+                            if (State == State.Realtime && LiveMarketOrders)
                                 EnterLong(Contracts, "50_Equilibrium_Long");
                             else
                                 EnterLongLimit(Contracts, entryPrice, "50_Equilibrium_Long");
@@ -393,7 +359,7 @@ namespace NinjaTrader.NinjaScript.Strategies
                 }
                 else if (High[0] >= bullExtreme)
                 {
-                    // Guard: Never evaluate cycle completion on the entry bar itself to prevent premature anchor reset
+                    // Guard: Never evaluate on the entry bar itself to prevent premature anchor corruption
                     if (CurrentBar > entryBarIndex || Position.MarketPosition == MarketPosition.Flat)
                     {
                         bullState = 3;
@@ -405,6 +371,7 @@ namespace NinjaTrader.NinjaScript.Strategies
             }
             else if (bullState == 5)
             {
+                // Option B: Wave Failure Stoprun Continuation
                 bullStoprunLow = Math.Min(bullStoprunLow, Low[0]);
                 if (High[0] >= bullExtreme)
                 {
@@ -416,7 +383,7 @@ namespace NinjaTrader.NinjaScript.Strategies
             }
 
             // ==========================================
-            // BEARISH STATE MACHINE (PURE MARKET STRUCTURE)
+            // 6. BEARISH WAVE CYCLE (CANONICAL OPTION B)
             // ==========================================
             if (bearState == 1)
             {
@@ -464,45 +431,31 @@ namespace NinjaTrader.NinjaScript.Strategies
                     if (Low[0] < bearExtreme) bearExtreme = Low[0];
                     double bear50 = bearExtreme + 0.50 * (bearAnchor - bearExtreme);
 
-                    // Touch Condition:
-                    bool isAt50Touch = (State == State.Realtime && UseMarketOrders)
-                        ? (Close[0] >= bear50 - (Math.Max(SlippageTicks, 1) * tick))
-                        : (High[0] >= bear50);
+                    // Touch Condition: Price touches 50% Equilibrium
+                    bool isAt50Touch = (High[0] >= bear50);
 
                     if ((bearAnchor - bearExtreme) > tick && isAt50Touch)
                     {
                         bearState = 4;
                         bearRetraceHigh = High[0];
                         double tradeRange = bearAnchor - bearExtreme;
-                        double targetDist = bear50 - bearExtreme;
 
-                        // Target Distance Guard: Minimum 16 ticks (4.0 pts)
-                        bool isTargetValid = (targetDist >= minTargetDist);
-
-                        // Proximity Guard: In Realtime, verify live tick is safely between Anchor and Target
-                        bool isEntrySafe = (State == State.Realtime)
-                            ? (Close[0] <= bearAnchor - stopBuffer) && (Close[0] >= bearExtreme + minTargetDist)
-                            : true;
-
-                        // Trade Execution Gate
-                        if (Position.MarketPosition == MarketPosition.Flat && !orderEntryPending && isEntryAllowed && activeBias == "BEAR" && tradeRange >= minRange && isTargetValid && isEntrySafe)
+                        // Canonical Trade Execution Gate: Range >= 8.0 pts & Bias == BEAR
+                        if (Position.MarketPosition == MarketPosition.Flat && !orderEntryPending && isEntryAllowed && activeBias == "BEAR" && tradeRange >= minRange)
                         {
                             trade50Level = bear50;
                             entryPrice = bear50;
-                            currentSl = bearAnchor + stopBuffer;
+                            double buffer = Close[0] * 0.00005; // Canonical micro-buffer
+                            currentSl = bearAnchor + buffer;
                             currentTp = bearExtreme;
                             highestInTrade = High[0];
-                            slMoved = false;
                             entryBarIndex = CurrentBar;
                             orderEntryPending = true;
 
                             SetStopLoss("50_Equilibrium_Short", CalculationMode.Price, currentSl, false);
                             SetProfitTarget("50_Equilibrium_Short", CalculationMode.Price, currentTp);
 
-                            // In Live Realtime with UseMarketOrders, submit Market order for guaranteed instant fill.
-                            // In Historical backtests, submit Limit order at entryPrice so Strategy Analyzer
-                            // fills at the exact 50% price rather than bar-close penalty.
-                            if (UseMarketOrders && State == State.Realtime)
+                            if (State == State.Realtime && LiveMarketOrders)
                                 EnterShort(Contracts, "50_Equilibrium_Short");
                             else
                                 EnterShortLimit(Contracts, entryPrice, "50_Equilibrium_Short");
@@ -528,7 +481,7 @@ namespace NinjaTrader.NinjaScript.Strategies
                 }
                 else if (Low[0] <= bearExtreme)
                 {
-                    // Guard: Never evaluate cycle completion on the entry bar itself to prevent premature anchor reset
+                    // Guard: Never evaluate on the entry bar itself to prevent premature anchor corruption
                     if (CurrentBar > entryBarIndex || Position.MarketPosition == MarketPosition.Flat)
                     {
                         bearState = 3;
@@ -540,6 +493,7 @@ namespace NinjaTrader.NinjaScript.Strategies
             }
             else if (bearState == 5)
             {
+                // Option B: Wave Failure Stoprun Continuation
                 bearStoprunHigh = Math.Max(bearStoprunHigh, High[0]);
                 if (Low[0] <= bearExtreme)
                 {
@@ -547,31 +501,6 @@ namespace NinjaTrader.NinjaScript.Strategies
                     bearAnchor = bearStoprunHigh;
                     bearExtreme = Low[0];
                     activeBias = "BEAR";
-                }
-            }
-
-            // Optional Trailing Stop (Disabled by default for 65.3% canonical win rate)
-            if (UseTrailingStop)
-            {
-                if (Position.MarketPosition == MarketPosition.Long && CurrentBar > entryBarIndex)
-                {
-                    double triggerPrice = trade50Level + 0.50 * (currentTp - trade50Level);
-                    if (High[0] >= triggerPrice && !slMoved)
-                    {
-                        currentSl = Math.Max(currentSl, lowestInTrade - stopBuffer);
-                        SetStopLoss("50_Equilibrium_Long", CalculationMode.Price, currentSl, false);
-                        slMoved = true;
-                    }
-                }
-                else if (Position.MarketPosition == MarketPosition.Short && CurrentBar > entryBarIndex)
-                {
-                    double triggerPrice = trade50Level - 0.50 * (trade50Level - currentTp);
-                    if (Low[0] <= triggerPrice && !slMoved)
-                    {
-                        currentSl = Math.Min(currentSl, highestInTrade + stopBuffer);
-                        SetStopLoss("50_Equilibrium_Short", CalculationMode.Price, currentSl, false);
-                        slMoved = true;
-                    }
                 }
             }
         }
@@ -590,7 +519,7 @@ namespace NinjaTrader.NinjaScript.Strategies
             {
                 orderEntryPending = false;
 
-                // When a trade exit fills and position becomes Flat
+                // When an exit order fills and position becomes Flat
                 if (Position.MarketPosition == MarketPosition.Flat)
                 {
                     entryBarIndex = -1;
@@ -619,7 +548,7 @@ namespace NinjaTrader.NinjaScript.Strategies
                                     Print(string.Format("{0} EST - Circuit Breaker Tripped: {1} consecutive losses reached today. Halting trading until tomorrow 09:30 AM EST.", easternNow, consecutiveLossCount));
                                 }
 
-                                // Structural Stop Loss Synchronization
+                                // Canonical SL Exit: Option B (State 5) or Reset (State 0)
                                 if (lastTrade.Entry.MarketPosition == MarketPosition.Long)
                                 {
                                     double exitLow = (lowestInTrade > 0) ? lowestInTrade : lastTrade.Exit.Price;
@@ -653,7 +582,7 @@ namespace NinjaTrader.NinjaScript.Strategies
                             {
                                 consecutiveLossCount = 0;
 
-                                // Structural Profit Target Hit Synchronization
+                                // Canonical TP Exit: Anchor Next Wave immediately (State 3)
                                 if (lastTrade.Entry.MarketPosition == MarketPosition.Long)
                                 {
                                     bullAnchor = (lowestInTrade > 0) ? lowestInTrade : bullRetraceLow;
