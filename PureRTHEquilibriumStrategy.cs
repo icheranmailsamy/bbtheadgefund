@@ -300,15 +300,15 @@ namespace NinjaTrader.NinjaScript.Strategies
                         bullRetraceLow = Low[0];
                         double tradeRange = bullExtreme - bullAnchor;
 
-                        // Proximity Guard: If using Market orders, current price Close[0] must actually be at the 50% level
-                        // and not already blown past to the target or stop
-                        bool isMarketEntrySafe = !UseMarketOrders || (Close[0] <= bull50 + (2 * tick) && Close[0] >= bullAnchor + (2 * tick) && Close[0] < bullExtreme - (4 * tick));
+                        // Proximity Guard: Current price Close[0] must be near the 50% level and safely between Anchor and Target
+                        // Forbids entry if price is already blown past to target or within 8 ticks (2.0 pts) of Stop Loss
+                        bool isEntrySafe = (Close[0] >= bullAnchor + (8 * tick)) && (Close[0] <= bullExtreme - (16 * tick));
 
-                        // Target Distance Guard: Target must be at least 4 ticks above current market price
-                        bool isTargetValid = bullExtreme >= Close[0] + (4 * tick);
+                        // Target Distance Guard: Target must be at least 16 ticks (4.0 pts) above entry price
+                        bool isTargetValid = (bullExtreme >= bull50 + (16 * tick));
 
                         // Trade Execution Gate: Morning Sniper (09:30 - 11:30 EST)
-                        if (Position.MarketPosition == MarketPosition.Flat && !orderEntryPending && isEntryAllowed && activeBias == "BULL" && tradeRange >= minRange && isMarketEntrySafe && isTargetValid)
+                        if (Position.MarketPosition == MarketPosition.Flat && !orderEntryPending && isEntryAllowed && activeBias == "BULL" && tradeRange >= minRange && isEntrySafe && isTargetValid)
                         {
                             trade50Level = bull50;
                             entryPrice = bull50 + (SlippageTicks * tick);
@@ -424,15 +424,15 @@ namespace NinjaTrader.NinjaScript.Strategies
                         bearRetraceHigh = High[0];
                         double tradeRange = bearAnchor - bearExtreme;
 
-                        // Proximity Guard: If using Market orders, current price Close[0] must actually be at the 50% level
-                        // and not already blown past to the target or stop
-                        bool isMarketEntrySafe = !UseMarketOrders || (Close[0] >= bear50 - (2 * tick) && Close[0] <= bearAnchor - (2 * tick) && Close[0] > bearExtreme + (4 * tick));
+                        // Proximity Guard: Current price Close[0] must be near the 50% level and safely between Anchor and Target
+                        // Forbids entry if price is already blown past to target or within 8 ticks (2.0 pts) of Stop Loss
+                        bool isEntrySafe = (Close[0] <= bearAnchor - (8 * tick)) && (Close[0] >= bearExtreme + (16 * tick));
 
-                        // Target Distance Guard: Target must be at least 4 ticks below current market price
-                        bool isTargetValid = bearExtreme <= Close[0] - (4 * tick);
+                        // Target Distance Guard: Target must be at least 16 ticks (4.0 pts) below entry price
+                        bool isTargetValid = (bearExtreme <= bear50 - (16 * tick));
 
                         // Trade Execution Gate: Morning Sniper (09:30 - 11:30 EST)
-                        if (Position.MarketPosition == MarketPosition.Flat && !orderEntryPending && isEntryAllowed && activeBias == "BEAR" && tradeRange >= minRange && isMarketEntrySafe && isTargetValid)
+                        if (Position.MarketPosition == MarketPosition.Flat && !orderEntryPending && isEntryAllowed && activeBias == "BEAR" && tradeRange >= minRange && isEntrySafe && isTargetValid)
                         {
                             trade50Level = bear50;
                             entryPrice = bear50 - (SlippageTicks * tick);
