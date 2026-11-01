@@ -309,8 +309,12 @@ namespace NinjaTrader.NinjaScript.Strategies
                     if (High[0] > bullExtreme) bullExtreme = High[0];
                     double bull50 = bullExtreme - 0.50 * (bullExtreme - bullAnchor);
 
-                    // Touch Condition: Price touches 50% Equilibrium
-                    bool isAt50Touch = (Low[0] <= bull50);
+                    // Touch Condition:
+                    // In Realtime with Market Orders, live tick Close[0] must actively be at the 50% level (within 1 tick) to avoid chasing.
+                    // In Historical backtest, candle Low[0] <= bull50 triggers the 50% limit fill.
+                    bool isAt50Touch = (State == State.Realtime && LiveMarketOrders)
+                        ? (Close[0] <= bull50 + tick)
+                        : (Low[0] <= bull50);
 
                     if ((bullExtreme - bullAnchor) > tick && isAt50Touch)
                     {
@@ -431,8 +435,12 @@ namespace NinjaTrader.NinjaScript.Strategies
                     if (Low[0] < bearExtreme) bearExtreme = Low[0];
                     double bear50 = bearExtreme + 0.50 * (bearAnchor - bearExtreme);
 
-                    // Touch Condition: Price touches 50% Equilibrium
-                    bool isAt50Touch = (High[0] >= bear50);
+                    // Touch Condition:
+                    // In Realtime with Market Orders, live tick Close[0] must actively be at the 50% level (within 1 tick) to avoid chasing.
+                    // In Historical backtest, candle High[0] >= bear50 triggers the 50% limit fill.
+                    bool isAt50Touch = (State == State.Realtime && LiveMarketOrders)
+                        ? (Close[0] >= bear50 - tick)
+                        : (High[0] >= bear50);
 
                     if ((bearAnchor - bearExtreme) > tick && isAt50Touch)
                     {
