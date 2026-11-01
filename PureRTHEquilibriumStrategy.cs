@@ -56,6 +56,7 @@ namespace NinjaTrader.NinjaScript.Strategies
         private bool isSessionInitializedToday = false;
         private string lastProcessedExitOrderId = string.Empty;
         private bool orderEntryPending = false;
+        private MarketPosition currentOpenPosition = MarketPosition.Flat;
 
         private double dayHigh;
         private double dayLow;
@@ -163,10 +164,14 @@ namespace NinjaTrader.NinjaScript.Strategies
             bearRetraceHigh = 0;
             bearStoprunHigh = 0;
             activeBias = null;
-            lowestInTrade = 0;
-            highestInTrade = 0;
-            entryBarIndex = -1;
             orderEntryPending = false;
+            if (Position.MarketPosition == MarketPosition.Flat)
+            {
+                lowestInTrade = 0;
+                highestInTrade = 0;
+                entryBarIndex = -1;
+                currentOpenPosition = MarketPosition.Flat;
+            }
         }
 
         protected override void OnBarUpdate()
@@ -527,86 +532,111 @@ namespace NinjaTrader.NinjaScript.Strategies
             {
                 orderEntryPending = false;
 
-                // When an exit order fills and position becomes Flat
+                // 1. Entry execution tracking: Record open position direction and execution fill price
+                if (execution.Order.Name.Contains("50_Equilibrium_Long"))
+                {
+                    currentOpenPosition = MarketPosition.Long;
+                    entryPrice = price;
+                    return;
+                }
+                else if (execution.Order.Name.Contains("50_Equilibrium_Short"))
+                {
+                    currentOpenPosition = MarketPosition.Short;
+                    entryPrice = price;
+                    return;
+                }
+
+                // 2. Exit execution: When position becomes Flat
                 if (Position.MarketPosition == MarketPosition.Flat)
                 {
                     entryBarIndex = -1;
 
-                    if (SystemPerformance.AllTrades.Count > 0)
+                    if (execution.Order.OrderId == lastProcessedExitOrderId)
+                        return;
+
+                    lastProcessedExitOrderId = execution.Order.OrderId;
+
+                    MarketPosition closedDirection = currentOpenPosition;
+                    // Fallback to order name or execution if currentOpenPosition was somehow flat
+                    if (closedDirection == MarketPosition.Flat)
                     {
-                        if (execution.Order.OrderId == lastProcessedExitOrderId)
-                            return;
-
-                        lastProcessedExitOrderId = execution.Order.OrderId;
-
-                        Trade lastTrade = SystemPerformance.AllTrades[SystemPerformance.AllTrades.Count - 1];
-                        
-                        // Bulletproof Win/Loss detection: Check ProfitPoints and Order Name
-                        bool isWin = lastTrade.ProfitPoints > 0 || (execution.Order != null && execution.Order.Name.Contains("Profit target"));
-
-                        if (!isWin)
-                        {
-                            consecutiveLossCount++;
-                            if (consecutiveLossCount >= MaxConsecutiveLosses)
-                            {
-                                dayHalted = true;
-                                Print(string.Format("{0} EST - Circuit Breaker Tripped: {1} consecutive losses reached today. Halting trading until tomorrow 09:30 AM EST.", GetEasternTime(Time[0]), consecutiveLossCount));
-                            }
-
-                            // Canonical SL Exit: Option B (State 5) or Reset (State 0)
-                            if (lastTrade.Entry.MarketPosition == MarketPosition.Long)
-                            {
-                                double exitLow = (lowestInTrade > 0) ? lowestInTrade : lastTrade.Exit.Price;
-                                if (exitLow >= dayLow)
-                                {
-                                    bullState = 5;
-                                    bullStoprunLow = exitLow;
-                                }
-                                else
-                                {
-                                    bullState = 0;
-                                }
-                                activeBias = null;
-                            }
-                            else if (lastTrade.Entry.MarketPosition == MarketPosition.Short)
-                            {
-                                double exitHigh = (highestInTrade > 0) ? highestInTrade : lastTrade.Exit.Price;
-                                if (exitHigh <= dayHigh)
-                                {
-                                    bearState = 5;
-                                    bearStoprunHigh = exitHigh;
-                                }
-                                else
-                                {
-                                    bearState = 0;
-                                }
-                                activeBias = null;
-                            }
-                        }
-                        else
-                        {
-                            consecutiveLossCount = 0;
-
-                            // Canonical TP Exit: Anchor Next Wave immediately (State 3)
-                            if (lastTrade.Entry.MarketPosition == MarketPosition.Long)
-                            {
-                                bullAnchor = (lowestInTrade > 0) ? lowestInTrade : bullRetraceLow;
-                                bullExtreme = currentTp;
-                                activeBias = "BULL";
-                                bullState = 3;
-                            }
-                            else if (lastTrade.Entry.MarketPosition == MarketPosition.Short)
-                            {
-                                bearAnchor = (highestInTrade > 0) ? highestInTrade : bearRetraceHigh;
-                                bearExtreme = currentTp;
-                                activeBias = "BEAR";
-                                bearState = 3;
-                            }
-                        }
-
-                        lowestInTrade = 0;
-                        highestInTrade = 0;
+                        if (execution.Order.Name.Contains("Long"))
+                            closedDirection = MarketPosition.Long;
+                        else if (execution.Order.Name.Contains("Short"))
+                            closedDirection = MarketPosition.Short;
                     }
+
+                    // Calculate realized points
+                    double realizedPts = (closedDirection == MarketPosition.Long)
+                        ? (price - entryPrice)
+                        : (entryPrice - price);
+
+                    // Win/Loss detection: Check Profit Target order name or realized points
+                    bool isWin = (execution.Order != null && execution.Order.Name.Contains("Profit target")) || realizedPts > 0;
+
+                    if (!isWin)
+                    {
+                        consecutiveLossCount++;
+                        if (consecutiveLossCount >= MaxConsecutiveLosses)
+                        {
+                            dayHalted = true;
+                            Print(string.Format("{0} EST - Circuit Breaker Tripped: {1} consecutive losses reached today. Halting trading until tomorrow 09:30 AM EST.", GetEasternTime(Time[0]), consecutiveLossCount));
+                        }
+
+                        // Canonical SL Exit: Option B (State 5) or Reset (State 0)
+                        if (closedDirection == MarketPosition.Long)
+                        {
+                            double exitLow = (lowestInTrade > 0) ? lowestInTrade : price;
+                            if (exitLow >= dayLow)
+                            {
+                                bullState = 5;
+                                bullStoprunLow = exitLow;
+                            }
+                            else
+                            {
+                                bullState = 0;
+                            }
+                            activeBias = null;
+                        }
+                        else if (closedDirection == MarketPosition.Short)
+                        {
+                            double exitHigh = (highestInTrade > 0) ? highestInTrade : price;
+                            if (exitHigh <= dayHigh)
+                            {
+                                bearState = 5;
+                                bearStoprunHigh = exitHigh;
+                            }
+                            else
+                            {
+                                bearState = 0;
+                            }
+                            activeBias = null;
+                        }
+                    }
+                    else
+                    {
+                        consecutiveLossCount = 0;
+
+                        // Canonical TP Exit: Anchor Next Wave immediately (State 3)
+                        if (closedDirection == MarketPosition.Long)
+                        {
+                            bullAnchor = (lowestInTrade > 0) ? lowestInTrade : bullRetraceLow;
+                            bullExtreme = currentTp;
+                            activeBias = "BULL";
+                            bullState = 3;
+                        }
+                        else if (closedDirection == MarketPosition.Short)
+                        {
+                            bearAnchor = (highestInTrade > 0) ? highestInTrade : bearRetraceHigh;
+                            bearExtreme = currentTp;
+                            activeBias = "BEAR";
+                            bearState = 3;
+                        }
+                    }
+
+                    currentOpenPosition = MarketPosition.Flat;
+                    lowestInTrade = 0;
+                    highestInTrade = 0;
                 }
             }
         }
