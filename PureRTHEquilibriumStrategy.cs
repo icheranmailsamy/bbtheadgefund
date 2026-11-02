@@ -82,7 +82,8 @@ namespace NinjaTrader.NinjaScript.Strategies
         private double lowestInTrade;
         private double highestInTrade;
         private int entryBarIndex = -1;
-        private int lastExitBarIndex = -1;
+        private bool bullWaveTraded = false;
+        private bool bearWaveTraded = false;
         private int consecutiveLossCount;
         private bool dayHalted;
 
@@ -105,7 +106,12 @@ namespace NinjaTrader.NinjaScript.Strategies
         public int MaxConsecutiveLosses { get; set; }
 
         [NinjaScriptProperty]
-        [Display(Name="Live Market Orders", Description="In Realtime: true = Market order on touch; false = Limit order at 50%. (Historical simulation automatically fills at 50% limit)", Order=4, GroupName="Parameters")]
+        [Range(100000, 163000)]
+        [Display(Name="Session End Time (EST)", Description="End time for entries and hard flatten in EST (113000 = Morning Sniper 11:30 AM; 160000 = Full Day RTH 4:00 PM)", Order=4, GroupName="Parameters")]
+        public int SessionEndTime { get; set; }
+
+        [NinjaScriptProperty]
+        [Display(Name="Live Market Orders", Description="In Realtime: true = Market order on touch; false = Limit order at 50%. (Historical simulation automatically fills at 50% limit)", Order=5, GroupName="Parameters")]
         public bool LiveMarketOrders { get; set; }
 
         protected override void OnStateChange()
@@ -131,10 +137,11 @@ namespace NinjaTrader.NinjaScript.Strategies
                 BarsRequiredToTrade                         = 1;
 
                 // Pure Canonical Defaults (Unchanged from canonical_variant_a.py)
-                Contracts                                   = 5;     // 5 MNQ contracts ($10/pt)
-                MinSetupRangeTicks                          = 32;    // 32 ticks = 8.0 points minimum range
-                MaxConsecutiveLosses                        = 3;     // 3 = Canonical 3-consecutive-loss daily stop
-                LiveMarketOrders                            = true;  // Immediate fill on live 50% touch
+                Contracts                                   = 5;      // 5 MNQ contracts ($10/pt)
+                MinSetupRangeTicks                          = 32;     // 32 ticks = 8.0 points minimum range
+                MaxConsecutiveLosses                        = 3;      // 3 = Canonical 3-consecutive-loss daily stop
+                SessionEndTime                              = 113000; // 11:30 AM EST (Morning Sniper; set 160000 for Full Day)
+                LiveMarketOrders                            = true;   // Immediate fill on live 50% touch
             }
             else if (State == State.Configure)
             {
@@ -164,9 +171,10 @@ namespace NinjaTrader.NinjaScript.Strategies
             bullStoprunLow = 0;
             bearRetraceHigh = 0;
             bearStoprunHigh = 0;
+            bullWaveTraded = false;
+            bearWaveTraded = false;
             activeBias = null;
             orderEntryPending = false;
-            lastExitBarIndex = -1;
             if (Position.MarketPosition == MarketPosition.Flat)
             {
                 lowestInTrade = 0;
@@ -187,15 +195,15 @@ namespace NinjaTrader.NinjaScript.Strategies
 
             int time = ToTime(easternNow);
 
-            // 1. HARD FLATTEN AT 11:30 AM EST SHARP (Canonical Morning Sniper Window)
-            if (time >= 113000)
+            // 1. HARD FLATTEN AT SESSION END TIME (Canonical Morning Sniper 11:30 AM or Full Day 4:00 PM)
+            if (time >= SessionEndTime)
             {
                 if (Position.MarketPosition != MarketPosition.Flat)
                 {
                     if (Position.MarketPosition == MarketPosition.Long)
-                        ExitLong("Flatten_1130");
+                        ExitLong("Flatten_SessionEnd");
                     else if (Position.MarketPosition == MarketPosition.Short)
-                        ExitShort("Flatten_1130");
+                        ExitShort("Flatten_SessionEnd");
                 }
                 ClearState();
                 return;
@@ -224,6 +232,8 @@ namespace NinjaTrader.NinjaScript.Strategies
                 bearExtreme = dayHigh;
                 bearRetraceHigh = dayHigh;
                 bearStoprunHigh = dayHigh;
+                bullWaveTraded = false;
+                bearWaveTraded = false;
                 activeBias = null;
                 lowestInTrade = 0;
                 highestInTrade = 0;
@@ -243,7 +253,7 @@ namespace NinjaTrader.NinjaScript.Strategies
             }
 
             // 3. CIRCUIT BREAKER CHECK
-            bool isEntryAllowed = (time >= 093000 && time < 113000) && !dayHalted;
+            bool isEntryAllowed = (time >= 093000 && time < SessionEndTime) && !dayHalted;
 
             // 4. SESSION HIGH / LOW TRACKING (Canonical Step 4)
             if (Low[0] < dayLow)
@@ -252,6 +262,7 @@ namespace NinjaTrader.NinjaScript.Strategies
                 bullState = 1;
                 bullAnchor = dayLow;
                 bullExtreme = dayLow;
+                bullWaveTraded = false;
                 if (activeBias == "BULL") activeBias = null;
             }
 
@@ -261,6 +272,7 @@ namespace NinjaTrader.NinjaScript.Strategies
                 bearState = 1;
                 bearAnchor = dayHigh;
                 bearExtreme = dayHigh;
+                bearWaveTraded = false;
                 if (activeBias == "BEAR") activeBias = null;
             }
 
@@ -294,6 +306,7 @@ namespace NinjaTrader.NinjaScript.Strategies
                     bullAnchor = bullLowestW1;
                     bullExtreme = High[0];
                     activeBias = "BULL"; // Recency Override
+                    bullWaveTraded = false;
                 }
             }
             else if (bullState == 3)
@@ -313,7 +326,11 @@ namespace NinjaTrader.NinjaScript.Strategies
                 }
                 else
                 {
-                    if (High[0] > bullExtreme) bullExtreme = High[0];
+                    if (High[0] > bullExtreme)
+                    {
+                        bullExtreme = High[0];
+                        bullWaveTraded = false;
+                    }
                     double bull50 = bullExtreme - 0.50 * (bullExtreme - bullAnchor);
 
                     // Touch Condition:
@@ -329,8 +346,8 @@ namespace NinjaTrader.NinjaScript.Strategies
                         bullRetraceLow = Low[0];
                         double tradeRange = bullExtreme - bullAnchor;
 
-                        // Canonical Trade Execution Gate: Range >= 8.0 pts & Bias == BULL & Strict 1-Bar Separation
-                        if (Position.MarketPosition == MarketPosition.Flat && !orderEntryPending && CurrentBar > lastExitBarIndex && isEntryAllowed && activeBias == "BULL" && tradeRange >= minRange)
+                        // 1-Trade-Per-Wave Execution Gate: Range >= 8.0 pts & Bias == BULL & !bullWaveTraded
+                        if (Position.MarketPosition == MarketPosition.Flat && !orderEntryPending && !bullWaveTraded && isEntryAllowed && activeBias == "BULL" && tradeRange >= minRange)
                         {
                             trade50Level = bull50;
                             entryPrice = bull50;
@@ -339,6 +356,7 @@ namespace NinjaTrader.NinjaScript.Strategies
                             currentTp = bullExtreme;
                             lowestInTrade = Low[0];
                             entryBarIndex = CurrentBar;
+                            bullWaveTraded = true;
                             orderEntryPending = true;
 
                             SetStopLoss("50_Equilibrium_Long", CalculationMode.Price, currentSl, false);
@@ -377,6 +395,7 @@ namespace NinjaTrader.NinjaScript.Strategies
                         bullAnchor = (lowestInTrade > 0) ? Math.Min(bullRetraceLow, lowestInTrade) : bullRetraceLow;
                         bullExtreme = High[0];
                         activeBias = "BULL";
+                        bullWaveTraded = false;
                     }
                 }
             }
@@ -390,6 +409,7 @@ namespace NinjaTrader.NinjaScript.Strategies
                     bullAnchor = bullStoprunLow;
                     bullExtreme = High[0];
                     activeBias = "BULL";
+                    bullWaveTraded = false;
                 }
             }
 
@@ -420,6 +440,7 @@ namespace NinjaTrader.NinjaScript.Strategies
                     bearAnchor = bearHighestW1;
                     bearExtreme = Low[0];
                     activeBias = "BEAR"; // Recency Override
+                    bearWaveTraded = false;
                 }
             }
             else if (bearState == 3)
@@ -439,7 +460,11 @@ namespace NinjaTrader.NinjaScript.Strategies
                 }
                 else
                 {
-                    if (Low[0] < bearExtreme) bearExtreme = Low[0];
+                    if (Low[0] < bearExtreme)
+                    {
+                        bearExtreme = Low[0];
+                        bearWaveTraded = false;
+                    }
                     double bear50 = bearExtreme + 0.50 * (bearAnchor - bearExtreme);
 
                     // Touch Condition:
@@ -455,8 +480,8 @@ namespace NinjaTrader.NinjaScript.Strategies
                         bearRetraceHigh = High[0];
                         double tradeRange = bearAnchor - bearExtreme;
 
-                        // Canonical Trade Execution Gate: Range >= 8.0 pts & Bias == BEAR & Strict 1-Bar Separation
-                        if (Position.MarketPosition == MarketPosition.Flat && !orderEntryPending && CurrentBar > lastExitBarIndex && isEntryAllowed && activeBias == "BEAR" && tradeRange >= minRange)
+                        // 1-Trade-Per-Wave Execution Gate: Range >= 8.0 pts & Bias == BEAR & !bearWaveTraded
+                        if (Position.MarketPosition == MarketPosition.Flat && !orderEntryPending && !bearWaveTraded && isEntryAllowed && activeBias == "BEAR" && tradeRange >= minRange)
                         {
                             trade50Level = bear50;
                             entryPrice = bear50;
@@ -465,6 +490,7 @@ namespace NinjaTrader.NinjaScript.Strategies
                             currentTp = bearExtreme;
                             highestInTrade = High[0];
                             entryBarIndex = CurrentBar;
+                            bearWaveTraded = true;
                             orderEntryPending = true;
 
                             SetStopLoss("50_Equilibrium_Short", CalculationMode.Price, currentSl, false);
@@ -503,6 +529,7 @@ namespace NinjaTrader.NinjaScript.Strategies
                         bearAnchor = (highestInTrade > 0) ? Math.Max(bearRetraceHigh, highestInTrade) : bearRetraceHigh;
                         bearExtreme = Low[0];
                         activeBias = "BEAR";
+                        bearWaveTraded = false;
                     }
                 }
             }
@@ -516,6 +543,7 @@ namespace NinjaTrader.NinjaScript.Strategies
                     bearAnchor = bearStoprunHigh;
                     bearExtreme = Low[0];
                     activeBias = "BEAR";
+                    bearWaveTraded = false;
                 }
             }
         }
@@ -552,7 +580,6 @@ namespace NinjaTrader.NinjaScript.Strategies
                 if (Position.MarketPosition == MarketPosition.Flat)
                 {
                     entryBarIndex = -1;
-                    lastExitBarIndex = CurrentBar;
 
                     if (execution.Order.OrderId == lastProcessedExitOrderId)
                         return;

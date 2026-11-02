@@ -6,12 +6,13 @@ indicator("Pure RTH 50% Equilibrium Engine [Morning Sniper]", shorttitle="50% Eq
 // ==============================================================================
 grp_strat   = "Strategy Parameters"
 min_range   = input.float(8.0, "Minimum Setup Range (Points)", minval=1.0, step=0.5, group=grp_strat, tooltip="Minimum distance between wave anchor and extreme (Canonical: 8.0 pts = 32 ticks)")
+session_mode= input.string("Morning Sniper (09:30 - 11:30)", "Session Window", options=["Morning Sniper (09:30 - 11:30)", "Full Day RTH (09:30 - 16:00)"], group=grp_strat)
 
 grp_vis     = "Visual Elements & Styling"
 show_arrow  = input.bool(true, "Show Entry Arrows & Labels", group=grp_vis)
 show_exits  = input.bool(true, "Show Exit Badges (TP / SL / Flat)", group=grp_vis)
 show_lines  = input.bool(true, "Show Active TP & SL Bracket Lines", group=grp_vis)
-show_tint   = input.bool(true, "Highlight Morning Sniper Window (09:30 - 11:30 AM EST)", group=grp_vis)
+show_tint   = input.bool(true, "Highlight Active Session Window", group=grp_vis)
 show_hud    = input.bool(true, "Show Live Status HUD Dashboard", group=grp_vis)
 
 // Modern Minimalist Institutional Palette
@@ -23,18 +24,19 @@ color col_flat = #9E9E9E      // Slate Gray
 color col_tint = color.new(#2962FF, 95) // Subtle killzone blue background tint
 
 // ==============================================================================
-// 2. NEW YORK TIMEZONE & SESSION LOGIC (09:30 AM - 11:30 AM EST)
+// 2. NEW YORK TIMEZONE & SESSION LOGIC
 // ==============================================================================
 int t_hour      = hour(time, "America/New_York")
 int t_min       = minute(time, "America/New_York")
 int t_total_min = t_hour * 60 + t_min
+int end_min     = (session_mode == "Morning Sniper (09:30 - 11:30)") ? 690 : 960
 
-bool is_rth_open   = (t_hour == 9 and t_min == 30)
-bool is_window     = (t_total_min >= 570 and t_total_min < 690)  // 09:30 to 11:29
-bool is_1130_close = (t_total_min >= 690)                        // 11:30 AM sharp cutoff
+bool is_rth_open      = (t_hour == 9 and t_min == 30)
+bool is_window        = (t_total_min >= 570 and t_total_min < end_min)
+bool is_session_close = (t_total_min >= end_min)
 
 // Session tinting
-bgcolor(show_tint and is_window ? col_tint : na, title="Morning Sniper Window")
+bgcolor(show_tint and is_window ? col_tint : na, title="Trading Session Window")
 
 // ==============================================================================
 // 3. PERSISTENT STATE MACHINE VARIABLES (ZERO-REPAINT ARCHITECTURE)
@@ -48,6 +50,7 @@ var float bull_extreme      = 0.0
 var float bull_lowest_w1    = 0.0
 var float bull_retrace_low  = 0.0
 var float bull_stoprun_low  = 0.0
+var bool  bull_wave_traded  = false
 
 var int   bear_state        = 0
 var float bear_anchor       = 0.0
@@ -55,6 +58,7 @@ var float bear_extreme      = 0.0
 var float bear_highest_w1   = 0.0
 var float bear_retrace_high = 0.0
 var float bear_stoprun_high = 0.0
+var bool  bear_wave_traded  = false
 
 var string active_bias      = "NONE"
 
@@ -66,7 +70,6 @@ var float tp_price          = 0.0
 var float lowest_in_trade   = 0.0
 var float highest_in_trade  = 0.0
 var int   entry_bar_idx     = 0
-var int   last_exit_bar_idx = -1
 
 // Line tracking references
 var line  active_tp_line    = na
@@ -79,9 +82,9 @@ var int   today_losses      = 0
 var float today_pts         = 0.0
 
 // ==============================================================================
-// 4. HARD FLATTEN AT 11:30 AM EST SHARP
+// 4. HARD FLATTEN AT SESSION CUTOFF
 // ==============================================================================
-if is_1130_close and pos != 0
+if is_session_close and pos != 0
     float pts_made = (pos == 1) ? (close - entry_price) : (entry_price - close)
     today_trades += 1
     today_pts    += pts_made
@@ -91,7 +94,7 @@ if is_1130_close and pos != 0
         today_losses += 1
 
     if show_exits
-        string txt = "⏱ Flat 11:30\n" + (pts_made >= 0 ? "+" : "") + str.tostring(pts_made, "#.##") + " pts"
+        string txt = "⏱ Flat Close\n" + (pts_made >= 0 ? "+" : "") + str.tostring(pts_made, "#.##") + " pts"
         label.new(bar_index, (pos == 1 ? high : low), text=txt, color=col_flat, textcolor=color.white, style=(pos == 1 ? label.style_label_down : label.style_label_up), size=size.small)
 
     if not na(active_tp_line)
@@ -101,11 +104,12 @@ if is_1130_close and pos != 0
         line.set_x2(active_sl_line, bar_index)
         active_sl_line := na
 
-    pos               := 0
-    last_exit_bar_idx := bar_index
-    bull_state        := 0
-    bear_state  := 0
-    active_bias := "NONE"
+    pos              := 0
+    bull_state       := 0
+    bear_state       := 0
+    bull_wave_traded := false
+    bear_wave_traded := false
+    active_bias      := "NONE"
 
 // ==============================================================================
 // 5. 09:30 AM EST NYSE OPENING BELL RESET
@@ -119,6 +123,7 @@ if is_rth_open
     bull_lowest_w1      := day_low
     bull_retrace_low    := day_low
     bull_stoprun_low    := day_low
+    bull_wave_traded    := false
 
     bear_state          := 1
     bear_anchor         := day_high
@@ -126,6 +131,7 @@ if is_rth_open
     bear_highest_w1     := day_high
     bear_retrace_high   := day_high
     bear_stoprun_high   := day_high
+    bear_wave_traded    := false
 
     active_bias         := "NONE"
     pos                 := 0
@@ -141,7 +147,7 @@ if is_rth_open
 // ==============================================================================
 // 6. IN-TRADE MANAGEMENT & EXIT LOGIC (FORWARD-BAR EVALUATION)
 // ==============================================================================
-if pos == 1 and not is_1130_close and not is_rth_open
+if pos == 1 and not is_session_close and not is_rth_open
     lowest_in_trade := math.min(lowest_in_trade, low)
 
     // Check Take Profit
@@ -165,9 +171,8 @@ if pos == 1 and not is_1130_close and not is_rth_open
         bull_anchor  := lowest_in_trade
         bull_extreme := tp_price
         active_bias  := "BULL"
-        bull_state        := 3
-        pos               := 0
-        last_exit_bar_idx := bar_index
+        bull_state   := 3
+        pos          := 0
 
     // Check Stop Loss
     else if low <= sl_price
@@ -194,11 +199,10 @@ if pos == 1 and not is_1130_close and not is_rth_open
             bull_state := 0
 
         // SEAMLESS OPPOSING WAVE TRANSITION
-        active_bias       := (bear_state >= 3) ? "BEAR" : "NONE"
-        pos               := 0
-        last_exit_bar_idx := bar_index
+        active_bias := (bear_state >= 3) ? "BEAR" : "NONE"
+        pos         := 0
 
-else if pos == -1 and not is_1130_close and not is_rth_open
+else if pos == -1 and not is_session_close and not is_rth_open
     highest_in_trade := math.max(highest_in_trade, high)
 
     // Check Take Profit
@@ -222,9 +226,8 @@ else if pos == -1 and not is_1130_close and not is_rth_open
         bear_anchor  := highest_in_trade
         bear_extreme := tp_price
         active_bias  := "BEAR"
-        bear_state        := 3
-        pos               := 0
-        last_exit_bar_idx := bar_index
+        bear_state   := 3
+        pos          := 0
 
     // Check Stop Loss
     else if high >= sl_price
@@ -251,31 +254,32 @@ else if pos == -1 and not is_1130_close and not is_rth_open
             bear_state := 0
 
         // SEAMLESS OPPOSING WAVE TRANSITION
-        active_bias       := (bull_state >= 3) ? "BULL" : "NONE"
-        pos               := 0
-        last_exit_bar_idx := bar_index
+        active_bias := (bull_state >= 3) ? "BULL" : "NONE"
+        pos         := 0
 
 // ==============================================================================
 // 7. SESSION HIGH / LOW TRACKING
 // ==============================================================================
 if low < day_low
-    day_low      := low
-    bull_state   := 1
-    bull_anchor  := day_low
-    bull_extreme := day_low
+    day_low          := low
+    bull_state       := 1
+    bull_anchor      := day_low
+    bull_extreme     := day_low
+    bull_wave_traded := false
     if active_bias == "BULL"
         active_bias := "NONE"
 
 if high > day_high
-    day_high     := high
-    bear_state   := 1
-    bear_anchor  := day_high
-    bear_extreme := day_high
+    day_high         := high
+    bear_state       := 1
+    bear_anchor      := day_high
+    bear_extreme     := day_high
+    bear_wave_traded := false
     if active_bias == "BEAR"
         active_bias := "NONE"
 
 // ==============================================================================
-// 8. 5-STATE EXPANSION ENGINE & 50% EQUILIBRIUM ENTRIES
+// 8. 5-STATE EXPANSION ENGINE & 50% EQUILIBRIUM ENTRIES (1 TRADE PER WAVE)
 // ==============================================================================
 if is_window and not is_rth_open
     // --- BULLISH STATE MACHINE ---
@@ -294,10 +298,11 @@ if is_window and not is_rth_open
             if active_bias == "BULL"
                 active_bias := "NONE"
         else if high >= bull_extreme
-            bull_state   := 3
-            bull_anchor  := bull_lowest_w1
-            bull_extreme := high
-            active_bias  := "BULL"
+            bull_state       := 3
+            bull_anchor      := bull_lowest_w1
+            bull_extreme     := high
+            active_bias      := "BULL"
+            bull_wave_traded := false
 
     else if bull_state == 3
         if low < bull_anchor
@@ -308,22 +313,24 @@ if is_window and not is_rth_open
                 active_bias := "NONE"
         else
             if high > bull_extreme
-                bull_extreme := high
+                bull_extreme     := high
+                bull_wave_traded := false
             float bull_50 = bull_extreme - 0.50 * (bull_extreme - bull_anchor)
             if (bull_extreme - bull_anchor) > syminfo.mintick and low <= bull_50
                 bull_state := 4
                 bull_retrace_low := low
                 float trade_range = bull_extreme - bull_anchor
 
-                // Canonical Entry Qualification (Strict 1-Bar Separation)
-                if pos == 0 and bar_index > last_exit_bar_idx and active_bias == "BULL" and trade_range >= min_range
-                    pos             := 1
-                    entry_price     := bull_50
-                    float buffer    = close * 0.00005
-                    sl_price        := bull_anchor - buffer
-                    tp_price        := bull_extreme
-                    lowest_in_trade := low
-                    entry_bar_idx   := bar_index
+                // Canonical 1-Trade-Per-Wave Gate: Range >= 8.0 pts & Bias == BULL & !bull_wave_traded
+                if pos == 0 and not bull_wave_traded and active_bias == "BULL" and trade_range >= min_range
+                    pos              := 1
+                    bull_wave_traded := true
+                    entry_price      := bull_50
+                    float buffer     = close * 0.00005
+                    sl_price         := bull_anchor - buffer
+                    tp_price         := bull_extreme
+                    lowest_in_trade  := low
+                    entry_bar_idx    := bar_index
 
                     if show_arrow
                         string txt = "▲ LONG\n" + str.tostring(entry_price, "#.##")
@@ -344,18 +351,20 @@ if is_window and not is_rth_open
             if active_bias == "BULL"
                 active_bias := "NONE"
         else if high >= bull_extreme
-            bull_state   := 3
-            bull_anchor  := bull_retrace_low
-            bull_extreme := high
-            active_bias  := "BULL"
+            bull_state       := 3
+            bull_anchor      := bull_retrace_low
+            bull_extreme     := high
+            active_bias      := "BULL"
+            bull_wave_traded := false
 
     else if bull_state == 5
         bull_stoprun_low := math.min(bull_stoprun_low, low)
         if high >= bull_extreme
-            bull_state   := 3
-            bull_anchor  := bull_stoprun_low
-            bull_extreme := high
-            active_bias  := "BULL"
+            bull_state       := 3
+            bull_anchor      := bull_stoprun_low
+            bull_extreme     := high
+            active_bias      := "BULL"
+            bull_wave_traded := false
 
     // --- BEARISH STATE MACHINE ---
     if bear_state == 1
@@ -373,10 +382,11 @@ if is_window and not is_rth_open
             if active_bias == "BEAR"
                 active_bias := "NONE"
         else if low <= bear_extreme
-            bear_state   := 3
-            bear_anchor  := bear_highest_w1
-            bear_extreme := low
-            active_bias  := "BEAR"
+            bear_state       := 3
+            bear_anchor      := bear_highest_w1
+            bear_extreme     := low
+            active_bias      := "BEAR"
+            bear_wave_traded := false
 
     else if bear_state == 3
         if high > bear_anchor
@@ -387,16 +397,18 @@ if is_window and not is_rth_open
                 active_bias := "NONE"
         else
             if low < bear_extreme
-                bear_extreme := low
+                bear_extreme     := low
+                bear_wave_traded := false
             float bear_50 = bear_extreme + 0.50 * (bear_anchor - bear_extreme)
             if (bear_anchor - bear_extreme) > syminfo.mintick and high >= bear_50
                 bear_state := 4
                 bear_retrace_high := high
                 float trade_range = bear_anchor - bear_extreme
 
-                // Canonical Entry Qualification (Strict 1-Bar Separation)
-                if pos == 0 and bar_index > last_exit_bar_idx and active_bias == "BEAR" and trade_range >= min_range
+                // Canonical 1-Trade-Per-Wave Gate: Range >= 8.0 pts & Bias == BEAR & !bear_wave_traded
+                if pos == 0 and not bear_wave_traded and active_bias == "BEAR" and trade_range >= min_range
                     pos              := -1
+                    bear_wave_traded := true
                     entry_price      := bear_50
                     float buffer     = close * 0.00005
                     sl_price         := bear_anchor + buffer
@@ -423,18 +435,20 @@ if is_window and not is_rth_open
             if active_bias == "BEAR"
                 active_bias := "NONE"
         else if low <= bear_extreme
-            bear_state   := 3
-            bear_anchor  := bear_retrace_high
-            bear_extreme := low
-            active_bias  := "BEAR"
+            bear_state       := 3
+            bear_anchor      := bear_retrace_high
+            bear_extreme     := low
+            active_bias      := "BEAR"
+            bear_wave_traded := false
 
     else if bear_state == 5
         bear_stoprun_high := math.max(bear_stoprun_high, high)
         if low <= bear_extreme
-            bear_state   := 3
-            bear_anchor  := bear_stoprun_high
-            bear_extreme := low
-            active_bias  := "BEAR"
+            bear_state       := 3
+            bear_anchor      := bear_stoprun_high
+            bear_extreme     := low
+            active_bias      := "BEAR"
+            bear_wave_traded := false
 
 // Extend active lines to current bar while in trade
 if pos != 0 and show_lines
@@ -454,7 +468,7 @@ if show_hud and barstate.islast
     table.cell(hud, 1, 0, "Morning Sniper v6", bgcolor=color.new(#2962FF, 20), text_color=#00E676, text_size=size.small, text_halign=text.align_right)
 
     // Session Status
-    string session_str = is_window ? "ACTIVE (09:30-11:30)" : "CLOSED"
+    string session_str = is_window ? ("ACTIVE (" + (session_mode == "Morning Sniper (09:30 - 11:30)" ? "09:30-11:30" : "09:30-16:00") + ")") : "CLOSED"
     color  session_col = is_window ? col_bull : col_flat
     table.cell(hud, 0, 1, "Session Window", text_color=#B2B5BE, text_size=size.small, text_halign=text.align_left)
     table.cell(hud, 1, 1, session_str, text_color=session_col, text_size=size.small, text_halign=text.align_right)
