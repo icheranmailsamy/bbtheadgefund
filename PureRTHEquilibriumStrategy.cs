@@ -82,6 +82,7 @@ namespace NinjaTrader.NinjaScript.Strategies
         private double lowestInTrade;
         private double highestInTrade;
         private int entryBarIndex = -1;
+        private int lastExitBarIndex = -1;
         private int consecutiveLossCount;
         private bool dayHalted;
 
@@ -132,7 +133,7 @@ namespace NinjaTrader.NinjaScript.Strategies
                 // Pure Canonical Defaults (Unchanged from canonical_variant_a.py)
                 Contracts                                   = 5;     // 5 MNQ contracts ($10/pt)
                 MinSetupRangeTicks                          = 32;    // 32 ticks = 8.0 points minimum range
-                MaxConsecutiveLosses                        = 0;     // 0 = Disabled (No consecutive loss limit; 11:30 AM EST force close only)
+                MaxConsecutiveLosses                        = 3;     // 3 = Canonical 3-consecutive-loss daily stop
                 LiveMarketOrders                            = true;  // Immediate fill on live 50% touch
             }
             else if (State == State.Configure)
@@ -165,6 +166,7 @@ namespace NinjaTrader.NinjaScript.Strategies
             bearStoprunHigh = 0;
             activeBias = null;
             orderEntryPending = false;
+            lastExitBarIndex = -1;
             if (Position.MarketPosition == MarketPosition.Flat)
             {
                 lowestInTrade = 0;
@@ -327,8 +329,8 @@ namespace NinjaTrader.NinjaScript.Strategies
                         bullRetraceLow = Low[0];
                         double tradeRange = bullExtreme - bullAnchor;
 
-                        // Canonical Trade Execution Gate: Range >= 8.0 pts & Bias == BULL
-                        if (Position.MarketPosition == MarketPosition.Flat && !orderEntryPending && isEntryAllowed && activeBias == "BULL" && tradeRange >= minRange)
+                        // Canonical Trade Execution Gate: Range >= 8.0 pts & Bias == BULL & Strict 1-Bar Separation
+                        if (Position.MarketPosition == MarketPosition.Flat && !orderEntryPending && CurrentBar > lastExitBarIndex && isEntryAllowed && activeBias == "BULL" && tradeRange >= minRange)
                         {
                             trade50Level = bull50;
                             entryPrice = bull50;
@@ -453,8 +455,8 @@ namespace NinjaTrader.NinjaScript.Strategies
                         bearRetraceHigh = High[0];
                         double tradeRange = bearAnchor - bearExtreme;
 
-                        // Canonical Trade Execution Gate: Range >= 8.0 pts & Bias == BEAR
-                        if (Position.MarketPosition == MarketPosition.Flat && !orderEntryPending && isEntryAllowed && activeBias == "BEAR" && tradeRange >= minRange)
+                        // Canonical Trade Execution Gate: Range >= 8.0 pts & Bias == BEAR & Strict 1-Bar Separation
+                        if (Position.MarketPosition == MarketPosition.Flat && !orderEntryPending && CurrentBar > lastExitBarIndex && isEntryAllowed && activeBias == "BEAR" && tradeRange >= minRange)
                         {
                             trade50Level = bear50;
                             entryPrice = bear50;
@@ -550,6 +552,7 @@ namespace NinjaTrader.NinjaScript.Strategies
                 if (Position.MarketPosition == MarketPosition.Flat)
                 {
                     entryBarIndex = -1;
+                    lastExitBarIndex = CurrentBar;
 
                     if (execution.Order.OrderId == lastProcessedExitOrderId)
                         return;
