@@ -224,19 +224,55 @@ namespace NinjaTrader.NinjaScript.Strategies
                 dayHalted = false;
                 dayHigh = High[0];
                 dayLow = Low[0];
-                bullState = 1;
-                bullAnchor = dayLow;
-                bullExtreme = dayLow;
+
+                double r0 = dayHigh - dayLow;
+                double minRange = MinSetupRangeTicks * TickSize;
+
+                // Initial Stage Opening Candle Priming:
+                // If opening 09:30 candle range >= minRange (8.0 pts / 32 ticks), prime Wave 1 immediately into State 3!
+                // This allows the 2nd candle (09:31) to enter on a 50% retracement and target the extreme.
+                if (r0 >= minRange)
+                {
+                    if (Close[0] >= Open[0])
+                    {
+                        bullState = 3;
+                        bullAnchor = dayLow;
+                        bullExtreme = dayHigh;
+                        activeBias = "BULL";
+                        bearState = 1;
+                        bearAnchor = dayHigh;
+                        bearExtreme = dayHigh;
+                    }
+                    else
+                    {
+                        bearState = 3;
+                        bearAnchor = dayHigh;
+                        bearExtreme = dayLow;
+                        activeBias = "BEAR";
+                        bullState = 1;
+                        bullAnchor = dayLow;
+                        bullExtreme = dayLow;
+                    }
+                }
+                else
+                {
+                    bullState = 1;
+                    bullAnchor = dayLow;
+                    bullExtreme = dayLow;
+                    bearState = 1;
+                    bearAnchor = dayHigh;
+                    bearExtreme = dayHigh;
+                    activeBias = null;
+                }
+
+                bullLowestW1 = dayLow;
                 bullRetraceLow = dayLow;
                 bullStoprunLow = dayLow;
-                bearState = 1;
-                bearAnchor = dayHigh;
-                bearExtreme = dayHigh;
+                bearHighestW1 = dayHigh;
                 bearRetraceHigh = dayHigh;
                 bearStoprunHigh = dayHigh;
                 bullWaveTraded = false;
                 bearWaveTraded = false;
-                activeBias = null;
                 lowestInTrade = 0;
                 highestInTrade = 0;
                 entryBarIndex = -1;
