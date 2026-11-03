@@ -85,6 +85,9 @@ namespace NinjaTrader.NinjaScript.Strategies
         private int lastExitBarIndex = -1;
         private bool bullWaveTraded = false;
         private bool bearWaveTraded = false;
+        private int bullWaveCount = 1;
+        private int bearWaveCount = 1;
+        private int currentTradeWave = 0;
         private int consecutiveLossCount;
         private bool dayHalted;
 
@@ -225,45 +228,18 @@ namespace NinjaTrader.NinjaScript.Strategies
                 dayHigh = High[0];
                 dayLow = Low[0];
 
-                double r0 = dayHigh - dayLow;
-                double minRange = MinSetupRangeTicks * TickSize;
-
-                // Initial Stage Opening Candle Priming:
-                // If opening 09:30 candle range >= minRange (8.0 pts / 32 ticks), prime Wave 1 immediately into State 3!
-                // This allows the 2nd candle (09:31) to enter on a 50% retracement and target the extreme.
-                if (r0 >= minRange)
-                {
-                    if (Close[0] >= Open[0])
-                    {
-                        bullState = 3;
-                        bullAnchor = dayLow;
-                        bullExtreme = dayHigh;
-                        activeBias = "BULL";
-                        bearState = 1;
-                        bearAnchor = dayHigh;
-                        bearExtreme = dayHigh;
-                    }
-                    else
-                    {
-                        bearState = 3;
-                        bearAnchor = dayHigh;
-                        bearExtreme = dayLow;
-                        activeBias = "BEAR";
-                        bullState = 1;
-                        bullAnchor = dayLow;
-                        bullExtreme = dayLow;
-                    }
-                }
-                else
-                {
-                    bullState = 1;
-                    bullAnchor = dayLow;
-                    bullExtreme = dayLow;
-                    bearState = 1;
-                    bearAnchor = dayHigh;
-                    bearExtreme = dayHigh;
-                    activeBias = null;
-                }
+                // Strict Wave 1 Initialization: Wave 1 is strictly for setup qualification (untraded).
+                // Both sides begin in State 1 tracking the opening expansion anchor and extreme.
+                // Wave 2 begins ONLY after Wave 1 retraces to 50% (State 2) and breaks out past extreme (State 3).
+                bullState = 1;
+                bullAnchor = dayLow;
+                bullExtreme = dayLow;
+                bearState = 1;
+                bearAnchor = dayHigh;
+                bearExtreme = dayHigh;
+                activeBias = null;
+                bullWaveCount = 1;
+                bearWaveCount = 1;
 
                 bullLowestW1 = dayLow;
                 bullRetraceLow = dayLow;
@@ -301,6 +277,7 @@ namespace NinjaTrader.NinjaScript.Strategies
                 bullAnchor = dayLow;
                 bullExtreme = dayLow;
                 bullWaveTraded = false;
+                bullWaveCount = 1; // Session Low wipeout resets Bull to Wave 1
                 if (activeBias == "BULL") activeBias = null;
             }
 
@@ -311,6 +288,7 @@ namespace NinjaTrader.NinjaScript.Strategies
                 bearAnchor = dayHigh;
                 bearExtreme = dayHigh;
                 bearWaveTraded = false;
+                bearWaveCount = 1; // Session High wipeout resets Bear to Wave 1
                 if (activeBias == "BEAR") activeBias = null;
             }
 
@@ -345,6 +323,7 @@ namespace NinjaTrader.NinjaScript.Strategies
                     bullExtreme = High[0];
                     activeBias = "BULL"; // Recency Override
                     bullWaveTraded = false;
+                    bullWaveCount = 2; // Breakout of Wave 1 confirms Wave 2
                 }
             }
             else if (bullState == 3)
@@ -396,6 +375,7 @@ namespace NinjaTrader.NinjaScript.Strategies
                             entryBarIndex = CurrentBar;
                             bullWaveTraded = true;
                             orderEntryPending = true;
+                            currentTradeWave = bullWaveCount;
 
                             SetStopLoss("50_Equilibrium_Long", CalculationMode.Price, currentSl, false);
                             SetProfitTarget("50_Equilibrium_Long", CalculationMode.Price, currentTp);
@@ -434,6 +414,7 @@ namespace NinjaTrader.NinjaScript.Strategies
                         bullExtreme = High[0];
                         activeBias = "BULL";
                         bullWaveTraded = false;
+                        bullWaveCount++;
                     }
                 }
             }
@@ -448,6 +429,7 @@ namespace NinjaTrader.NinjaScript.Strategies
                     bullExtreme = High[0];
                     activeBias = "BULL";
                     bullWaveTraded = false;
+                    bullWaveCount++;
                 }
             }
 
@@ -479,6 +461,7 @@ namespace NinjaTrader.NinjaScript.Strategies
                     bearExtreme = Low[0];
                     activeBias = "BEAR"; // Recency Override
                     bearWaveTraded = false;
+                    bearWaveCount = 2; // Breakout of Wave 1 confirms Wave 2
                 }
             }
             else if (bearState == 3)
@@ -530,6 +513,7 @@ namespace NinjaTrader.NinjaScript.Strategies
                             entryBarIndex = CurrentBar;
                             bearWaveTraded = true;
                             orderEntryPending = true;
+                            currentTradeWave = bearWaveCount;
 
                             SetStopLoss("50_Equilibrium_Short", CalculationMode.Price, currentSl, false);
                             SetProfitTarget("50_Equilibrium_Short", CalculationMode.Price, currentTp);
@@ -568,6 +552,7 @@ namespace NinjaTrader.NinjaScript.Strategies
                         bearExtreme = Low[0];
                         activeBias = "BEAR";
                         bearWaveTraded = false;
+                        bearWaveCount++;
                     }
                 }
             }
@@ -582,6 +567,7 @@ namespace NinjaTrader.NinjaScript.Strategies
                     bearExtreme = Low[0];
                     activeBias = "BEAR";
                     bearWaveTraded = false;
+                    bearWaveCount++;
                 }
             }
         }
@@ -695,6 +681,7 @@ namespace NinjaTrader.NinjaScript.Strategies
                             bullExtreme = currentTp;
                             activeBias = "BULL";
                             bullState = 3;
+                            bullWaveCount++;
                         }
                         else if (closedDirection == MarketPosition.Short)
                         {
@@ -702,6 +689,7 @@ namespace NinjaTrader.NinjaScript.Strategies
                             bearExtreme = currentTp;
                             activeBias = "BEAR";
                             bearState = 3;
+                            bearWaveCount++;
                         }
                     }
 

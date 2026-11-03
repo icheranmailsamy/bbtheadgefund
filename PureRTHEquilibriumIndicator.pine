@@ -51,6 +51,7 @@ var float bull_lowest_w1    = 0.0
 var float bull_retrace_low  = 0.0
 var float bull_stoprun_low  = 0.0
 var bool  bull_wave_traded  = false
+var int   bull_wave_count   = 1
 
 var int   bear_state        = 0
 var float bear_anchor       = 0.0
@@ -59,6 +60,8 @@ var float bear_highest_w1   = 0.0
 var float bear_retrace_high = 0.0
 var float bear_stoprun_high = 0.0
 var bool  bear_wave_traded  = false
+var int   bear_wave_count   = 1
+var int   current_trade_wave = 0
 
 var string active_bias      = "NONE"
 
@@ -119,36 +122,19 @@ if is_session_close and pos != 0
 if is_rth_open
     day_high            := high
     day_low             := low
-    float r0            = day_high - day_low
 
-    // Initial Stage Opening Candle Priming:
-    // If opening 09:30 candle range >= min_range (8.0 pts / 32 ticks), prime Wave 1 immediately into State 3!
-    // This allows the 2nd candle (09:31) to enter on a 50% retracement and target the extreme.
-    if r0 >= min_range
-        if close >= open
-            bull_state   := 3
-            bull_anchor  := day_low
-            bull_extreme := day_high
-            active_bias  := "BULL"
-            bear_state   := 1
-            bear_anchor  := day_high
-            bear_extreme := day_high
-        else
-            bear_state   := 3
-            bear_anchor  := day_high
-            bear_extreme := day_low
-            active_bias  := "BEAR"
-            bull_state   := 1
-            bull_anchor  := day_low
-            bull_extreme := day_low
-    else
-        bull_state      := 1
-        bull_anchor     := day_low
-        bull_extreme    := day_low
-        bear_state      := 1
-        bear_anchor     := day_high
-        bear_extreme    := day_high
-        active_bias     := "NONE"
+    // Strict Wave 1 Initialization: Wave 1 is strictly for setup qualification (untraded).
+    // Both sides begin in State 1 tracking the opening expansion anchor and extreme.
+    // Wave 2 begins ONLY after Wave 1 retraces to 50% (State 2) and breaks out past extreme (State 3).
+    bull_state          := 1
+    bull_anchor         := day_low
+    bull_extreme        := day_low
+    bear_state          := 1
+    bear_anchor         := day_high
+    bear_extreme        := day_high
+    active_bias         := "NONE"
+    bull_wave_count     := 1
+    bear_wave_count     := 1
 
     bull_lowest_w1      := day_low
     bull_retrace_low    := day_low
@@ -198,6 +184,7 @@ if pos == 1 and not is_session_close and not is_rth_open
         bull_extreme := tp_price
         active_bias  := "BULL"
         bull_state   := 3
+        bull_wave_count += 1
         pos          := 0
         last_exit_bar_idx := bar_index
 
@@ -255,6 +242,7 @@ else if pos == -1 and not is_session_close and not is_rth_open
         bear_extreme := tp_price
         active_bias  := "BEAR"
         bear_state   := 3
+        bear_wave_count += 1
         pos          := 0
         last_exit_bar_idx := bar_index
 
@@ -296,6 +284,7 @@ if low < day_low
     bull_anchor      := day_low
     bull_extreme     := day_low
     bull_wave_traded := false
+    bull_wave_count  := 1
     if active_bias == "BULL"
         active_bias := "NONE"
 
@@ -305,6 +294,7 @@ if high > day_high
     bear_anchor      := day_high
     bear_extreme     := day_high
     bear_wave_traded := false
+    bear_wave_count  := 1
     if active_bias == "BEAR"
         active_bias := "NONE"
 
@@ -333,6 +323,7 @@ if is_window and not is_rth_open
             bull_extreme     := high
             active_bias      := "BULL"
             bull_wave_traded := false
+            bull_wave_count  := 2
 
     else if bull_state == 3
         if low < bull_anchor
@@ -361,9 +352,10 @@ if is_window and not is_rth_open
                     tp_price         := bull_extreme
                     lowest_in_trade  := low
                     entry_bar_idx    := bar_index
+                    current_trade_wave := bull_wave_count
 
                     if show_arrow
-                        string txt = "▲ LONG\n" + str.tostring(entry_price, "#.##")
+                        string txt = "▲ LONG (W" + str.tostring(current_trade_wave) + ")\n" + str.tostring(entry_price, "#.##")
                         label.new(bar_index, low, text=txt, color=col_bull, textcolor=color.black, style=label.style_label_up, yloc=yloc.belowbar, size=size.small)
 
                     if show_lines
@@ -386,6 +378,7 @@ if is_window and not is_rth_open
             bull_extreme     := high
             active_bias      := "BULL"
             bull_wave_traded := false
+            bull_wave_count  += 1
 
     else if bull_state == 5
         bull_stoprun_low := math.min(bull_stoprun_low, low)
@@ -395,6 +388,7 @@ if is_window and not is_rth_open
             bull_extreme     := high
             active_bias      := "BULL"
             bull_wave_traded := false
+            bull_wave_count  += 1
 
     // --- BEARISH STATE MACHINE ---
     if bear_state == 1
@@ -417,6 +411,7 @@ if is_window and not is_rth_open
             bear_extreme     := low
             active_bias      := "BEAR"
             bear_wave_traded := false
+            bear_wave_count  := 2
 
     else if bear_state == 3
         if high > bear_anchor
@@ -445,9 +440,10 @@ if is_window and not is_rth_open
                     tp_price         := bear_extreme
                     highest_in_trade := high
                     entry_bar_idx    := bar_index
+                    current_trade_wave := bear_wave_count
 
                     if show_arrow
-                        string txt = "▼ SHORT\n" + str.tostring(entry_price, "#.##")
+                        string txt = "▼ SHORT (W" + str.tostring(current_trade_wave) + ")\n" + str.tostring(entry_price, "#.##")
                         label.new(bar_index, high, text=txt, color=col_bear, textcolor=color.white, style=label.style_label_down, yloc=yloc.abovebar, size=size.small)
 
                     if show_lines
@@ -470,6 +466,7 @@ if is_window and not is_rth_open
             bear_extreme     := low
             active_bias      := "BEAR"
             bear_wave_traded := false
+            bear_wave_count  += 1
 
     else if bear_state == 5
         bear_stoprun_high := math.max(bear_stoprun_high, high)
@@ -479,6 +476,7 @@ if is_window and not is_rth_open
             bear_extreme     := low
             active_bias      := "BEAR"
             bear_wave_traded := false
+            bear_wave_count  += 1
 
 // Extend active lines to current bar while in trade
 if pos != 0 and show_lines
