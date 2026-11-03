@@ -70,6 +70,7 @@ var float tp_price          = 0.0
 var float lowest_in_trade   = 0.0
 var float highest_in_trade  = 0.0
 var int   entry_bar_idx     = 0
+var int   last_exit_bar_idx = -1
 
 // Line tracking references
 var line  active_tp_line    = na
@@ -104,9 +105,10 @@ if is_session_close and pos != 0
         line.set_x2(active_sl_line, bar_index)
         active_sl_line := na
 
-    pos              := 0
-    bull_state       := 0
-    bear_state       := 0
+    pos               := 0
+    last_exit_bar_idx := bar_index
+    bull_state        := 0
+    bear_state        := 0
     bull_wave_traded := false
     bear_wave_traded := false
     active_bias      := "NONE"
@@ -173,6 +175,7 @@ if pos == 1 and not is_session_close and not is_rth_open
         active_bias  := "BULL"
         bull_state   := 3
         pos          := 0
+        last_exit_bar_idx := bar_index
 
     // Check Stop Loss
     else if low <= sl_price
@@ -201,6 +204,7 @@ if pos == 1 and not is_session_close and not is_rth_open
         // SEAMLESS OPPOSING WAVE TRANSITION
         active_bias := (bear_state >= 3) ? "BEAR" : "NONE"
         pos         := 0
+        last_exit_bar_idx := bar_index
 
 else if pos == -1 and not is_session_close and not is_rth_open
     highest_in_trade := math.max(highest_in_trade, high)
@@ -228,6 +232,7 @@ else if pos == -1 and not is_session_close and not is_rth_open
         active_bias  := "BEAR"
         bear_state   := 3
         pos          := 0
+        last_exit_bar_idx := bar_index
 
     // Check Stop Loss
     else if high >= sl_price
@@ -256,6 +261,7 @@ else if pos == -1 and not is_session_close and not is_rth_open
         // SEAMLESS OPPOSING WAVE TRANSITION
         active_bias := (bull_state >= 3) ? "BULL" : "NONE"
         pos         := 0
+        last_exit_bar_idx := bar_index
 
 // ==============================================================================
 // 7. SESSION HIGH / LOW TRACKING
@@ -321,8 +327,8 @@ if is_window and not is_rth_open
                 bull_retrace_low := low
                 float trade_range = bull_extreme - bull_anchor
 
-                // Canonical 1-Trade-Per-Wave Gate: Range >= 8.0 pts & Bias == BULL & !bull_wave_traded
-                if pos == 0 and not bull_wave_traded and active_bias == "BULL" and trade_range >= min_range
+                // Canonical 1-Trade-Per-Wave & No-Chain Gate: Range >= 8.0 pts & Bias == BULL & bar_index > last_exit_bar_idx & !bull_wave_traded
+                if pos == 0 and bar_index > last_exit_bar_idx and not bull_wave_traded and active_bias == "BULL" and trade_range >= min_range
                     pos              := 1
                     bull_wave_traded := true
                     entry_price      := bull_50
@@ -405,8 +411,8 @@ if is_window and not is_rth_open
                 bear_retrace_high := high
                 float trade_range = bear_anchor - bear_extreme
 
-                // Canonical 1-Trade-Per-Wave Gate: Range >= 8.0 pts & Bias == BEAR & !bear_wave_traded
-                if pos == 0 and not bear_wave_traded and active_bias == "BEAR" and trade_range >= min_range
+                // Canonical 1-Trade-Per-Wave & No-Chain Gate: Range >= 8.0 pts & Bias == BEAR & bar_index > last_exit_bar_idx & !bear_wave_traded
+                if pos == 0 and bar_index > last_exit_bar_idx and not bear_wave_traded and active_bias == "BEAR" and trade_range >= min_range
                     pos              := -1
                     bear_wave_traded := true
                     entry_price      := bear_50

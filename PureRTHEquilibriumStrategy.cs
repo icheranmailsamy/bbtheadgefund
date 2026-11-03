@@ -82,6 +82,7 @@ namespace NinjaTrader.NinjaScript.Strategies
         private double lowestInTrade;
         private double highestInTrade;
         private int entryBarIndex = -1;
+        private int lastExitBarIndex = -1;
         private bool bullWaveTraded = false;
         private bool bearWaveTraded = false;
         private int consecutiveLossCount;
@@ -175,6 +176,7 @@ namespace NinjaTrader.NinjaScript.Strategies
             bearWaveTraded = false;
             activeBias = null;
             orderEntryPending = false;
+            lastExitBarIndex = -1;
             if (Position.MarketPosition == MarketPosition.Flat)
             {
                 lowestInTrade = 0;
@@ -346,8 +348,8 @@ namespace NinjaTrader.NinjaScript.Strategies
                         bullRetraceLow = Low[0];
                         double tradeRange = bullExtreme - bullAnchor;
 
-                        // 1-Trade-Per-Wave Execution Gate: Range >= 8.0 pts & Bias == BULL & !bullWaveTraded
-                        if (Position.MarketPosition == MarketPosition.Flat && !orderEntryPending && !bullWaveTraded && isEntryAllowed && activeBias == "BULL" && tradeRange >= minRange)
+                        // Strict 1-Trade-Per-Wave & No-Chain Execution Gate: Range >= 8.0 pts & Bias == BULL & CurrentBar > lastExitBarIndex & !bullWaveTraded
+                        if (Position.MarketPosition == MarketPosition.Flat && !orderEntryPending && CurrentBar > lastExitBarIndex && !bullWaveTraded && isEntryAllowed && activeBias == "BULL" && tradeRange >= minRange)
                         {
                             trade50Level = bull50;
                             entryPrice = bull50;
@@ -480,8 +482,8 @@ namespace NinjaTrader.NinjaScript.Strategies
                         bearRetraceHigh = High[0];
                         double tradeRange = bearAnchor - bearExtreme;
 
-                        // 1-Trade-Per-Wave Execution Gate: Range >= 8.0 pts & Bias == BEAR & !bearWaveTraded
-                        if (Position.MarketPosition == MarketPosition.Flat && !orderEntryPending && !bearWaveTraded && isEntryAllowed && activeBias == "BEAR" && tradeRange >= minRange)
+                        // Strict 1-Trade-Per-Wave & No-Chain Execution Gate: Range >= 8.0 pts & Bias == BEAR & CurrentBar > lastExitBarIndex & !bearWaveTraded
+                        if (Position.MarketPosition == MarketPosition.Flat && !orderEntryPending && CurrentBar > lastExitBarIndex && !bearWaveTraded && isEntryAllowed && activeBias == "BEAR" && tradeRange >= minRange)
                         {
                             trade50Level = bear50;
                             entryPrice = bear50;
@@ -580,6 +582,7 @@ namespace NinjaTrader.NinjaScript.Strategies
                 if (Position.MarketPosition == MarketPosition.Flat)
                 {
                     entryBarIndex = -1;
+                    lastExitBarIndex = CurrentBar;
 
                     if (execution.Order.OrderId == lastProcessedExitOrderId)
                         return;
