@@ -66,6 +66,9 @@ namespace NinjaTrader.NinjaScript.Strategies
         private double bullLowestW1;
         private double bullRetraceLow;
         private double bullStoprunLow;
+        private int bullAnchorBar;
+        private int bullExtremeBar;
+        private int bullLowestW1Bar;
 
         private int bearState;
         private double bearAnchor;
@@ -73,6 +76,9 @@ namespace NinjaTrader.NinjaScript.Strategies
         private double bearHighestW1;
         private double bearRetraceHigh;
         private double bearStoprunHigh;
+        private int bearAnchorBar;
+        private int bearExtremeBar;
+        private int bearHighestW1Bar;
 
         private string activeBias;
         private double trade50Level;
@@ -234,9 +240,17 @@ namespace NinjaTrader.NinjaScript.Strategies
                 bullState = 1;
                 bullAnchor = dayLow;
                 bullExtreme = dayLow;
+                bullAnchorBar = CurrentBar;
+                bullExtremeBar = CurrentBar;
+                bullLowestW1Bar = CurrentBar;
+
                 bearState = 1;
                 bearAnchor = dayHigh;
                 bearExtreme = dayHigh;
+                bearAnchorBar = CurrentBar;
+                bearExtremeBar = CurrentBar;
+                bearHighestW1Bar = CurrentBar;
+
                 activeBias = null;
                 bullWaveCount = 1;
                 bearWaveCount = 1;
@@ -276,6 +290,9 @@ namespace NinjaTrader.NinjaScript.Strategies
                 bullState = 1;
                 bullAnchor = dayLow;
                 bullExtreme = dayLow;
+                bullAnchorBar = CurrentBar;
+                bullExtremeBar = CurrentBar;
+                bullLowestW1Bar = CurrentBar;
                 bullWaveTraded = false;
                 bullWaveCount = 1; // Session Low wipeout resets Bull to Wave 1
                 if (activeBias == "BULL") activeBias = null;
@@ -287,6 +304,9 @@ namespace NinjaTrader.NinjaScript.Strategies
                 bearState = 1;
                 bearAnchor = dayHigh;
                 bearExtreme = dayHigh;
+                bearAnchorBar = CurrentBar;
+                bearExtremeBar = CurrentBar;
+                bearHighestW1Bar = CurrentBar;
                 bearWaveTraded = false;
                 bearWaveCount = 1; // Session High wipeout resets Bear to Wave 1
                 if (activeBias == "BEAR") activeBias = null;
@@ -300,17 +320,26 @@ namespace NinjaTrader.NinjaScript.Strategies
             // ==========================================
             if (bullState == 1)
             {
-                if (High[0] > bullExtreme) bullExtreme = High[0];
+                if (High[0] > bullExtreme)
+                {
+                    bullExtreme = High[0];
+                    bullExtremeBar = CurrentBar;
+                }
                 double bull50 = bullExtreme - 0.50 * (bullExtreme - bullAnchor);
                 if ((bullExtreme - bullAnchor) > tick && Low[0] <= bull50)
                 {
                     bullState = 2;
                     bullLowestW1 = Low[0];
+                    bullLowestW1Bar = CurrentBar;
                 }
             }
             else if (bullState == 2)
             {
-                bullLowestW1 = Math.Min(bullLowestW1, Low[0]);
+                if (Low[0] < bullLowestW1)
+                {
+                    bullLowestW1 = Low[0];
+                    bullLowestW1Bar = CurrentBar;
+                }
                 if (Low[0] < bullAnchor)
                 {
                     bullState = 0;
@@ -320,7 +349,9 @@ namespace NinjaTrader.NinjaScript.Strategies
                 {
                     bullState = 3;
                     bullAnchor = bullLowestW1;
+                    bullAnchorBar = bullLowestW1Bar;
                     bullExtreme = High[0];
+                    bullExtremeBar = CurrentBar;
                     activeBias = "BULL"; // Recency Override
                     bullWaveTraded = false;
                     bullWaveCount = 2; // Breakout of Wave 1 confirms Wave 2
@@ -346,6 +377,7 @@ namespace NinjaTrader.NinjaScript.Strategies
                     if (High[0] > bullExtreme)
                     {
                         bullExtreme = High[0];
+                        bullExtremeBar = CurrentBar;
                         bullWaveTraded = false;
                     }
                     double bull50 = bullExtreme - 0.50 * (bullExtreme - bullAnchor);
@@ -357,7 +389,8 @@ namespace NinjaTrader.NinjaScript.Strategies
                         ? (Close[0] <= bull50 + tick)
                         : (Low[0] <= bull50);
 
-                    if ((bullExtreme - bullAnchor) > tick && isAt50Touch)
+                    // Canonical Minimum 2-Candle Impulse Rule: (bullExtremeBar > bullAnchorBar)
+                    if ((bullExtreme - bullAnchor) > tick && isAt50Touch && (bullExtremeBar > bullAnchorBar))
                     {
                         bullState = 4;
                         bullRetraceLow = Low[0];
@@ -411,7 +444,9 @@ namespace NinjaTrader.NinjaScript.Strategies
                     {
                         bullState = 3;
                         bullAnchor = (lowestInTrade > 0) ? Math.Min(bullRetraceLow, lowestInTrade) : bullRetraceLow;
+                        bullAnchorBar = CurrentBar;
                         bullExtreme = High[0];
+                        bullExtremeBar = CurrentBar;
                         activeBias = "BULL";
                         bullWaveTraded = false;
                         bullWaveCount++;
@@ -426,7 +461,9 @@ namespace NinjaTrader.NinjaScript.Strategies
                 {
                     bullState = 3;
                     bullAnchor = bullStoprunLow;
+                    bullAnchorBar = CurrentBar;
                     bullExtreme = High[0];
+                    bullExtremeBar = CurrentBar;
                     activeBias = "BULL";
                     bullWaveTraded = false;
                     bullWaveCount++;
@@ -438,17 +475,26 @@ namespace NinjaTrader.NinjaScript.Strategies
             // ==========================================
             if (bearState == 1)
             {
-                if (Low[0] < bearExtreme) bearExtreme = Low[0];
+                if (Low[0] < bearExtreme)
+                {
+                    bearExtreme = Low[0];
+                    bearExtremeBar = CurrentBar;
+                }
                 double bear50 = bearExtreme + 0.50 * (bearAnchor - bearExtreme);
                 if ((bearAnchor - bearExtreme) > tick && High[0] >= bear50)
                 {
                     bearState = 2;
                     bearHighestW1 = High[0];
+                    bearHighestW1Bar = CurrentBar;
                 }
             }
             else if (bearState == 2)
             {
-                bearHighestW1 = Math.Max(bearHighestW1, High[0]);
+                if (High[0] > bearHighestW1)
+                {
+                    bearHighestW1 = High[0];
+                    bearHighestW1Bar = CurrentBar;
+                }
                 if (High[0] > bearAnchor)
                 {
                     bearState = 0;
@@ -458,7 +504,9 @@ namespace NinjaTrader.NinjaScript.Strategies
                 {
                     bearState = 3;
                     bearAnchor = bearHighestW1;
+                    bearAnchorBar = bearHighestW1Bar;
                     bearExtreme = Low[0];
+                    bearExtremeBar = CurrentBar;
                     activeBias = "BEAR"; // Recency Override
                     bearWaveTraded = false;
                     bearWaveCount = 2; // Breakout of Wave 1 confirms Wave 2
@@ -484,6 +532,7 @@ namespace NinjaTrader.NinjaScript.Strategies
                     if (Low[0] < bearExtreme)
                     {
                         bearExtreme = Low[0];
+                        bearExtremeBar = CurrentBar;
                         bearWaveTraded = false;
                     }
                     double bear50 = bearExtreme + 0.50 * (bearAnchor - bearExtreme);
@@ -495,7 +544,8 @@ namespace NinjaTrader.NinjaScript.Strategies
                         ? (Close[0] >= bear50 - tick)
                         : (High[0] >= bear50);
 
-                    if ((bearAnchor - bearExtreme) > tick && isAt50Touch)
+                    // Canonical Minimum 2-Candle Impulse Rule: (bearExtremeBar > bearAnchorBar)
+                    if ((bearAnchor - bearExtreme) > tick && isAt50Touch && (bearExtremeBar > bearAnchorBar))
                     {
                         bearState = 4;
                         bearRetraceHigh = High[0];
@@ -549,7 +599,9 @@ namespace NinjaTrader.NinjaScript.Strategies
                     {
                         bearState = 3;
                         bearAnchor = (highestInTrade > 0) ? Math.Max(bearRetraceHigh, highestInTrade) : bearRetraceHigh;
+                        bearAnchorBar = CurrentBar;
                         bearExtreme = Low[0];
+                        bearExtremeBar = CurrentBar;
                         activeBias = "BEAR";
                         bearWaveTraded = false;
                         bearWaveCount++;
@@ -564,7 +616,9 @@ namespace NinjaTrader.NinjaScript.Strategies
                 {
                     bearState = 3;
                     bearAnchor = bearStoprunHigh;
+                    bearAnchorBar = CurrentBar;
                     bearExtreme = Low[0];
+                    bearExtremeBar = CurrentBar;
                     activeBias = "BEAR";
                     bearWaveTraded = false;
                     bearWaveCount++;
@@ -678,7 +732,9 @@ namespace NinjaTrader.NinjaScript.Strategies
                         if (closedDirection == MarketPosition.Long)
                         {
                             bullAnchor = (lowestInTrade > 0) ? lowestInTrade : bullRetraceLow;
+                            bullAnchorBar = CurrentBar;
                             bullExtreme = currentTp;
+                            bullExtremeBar = CurrentBar;
                             activeBias = "BULL";
                             bullState = 3;
                             bullWaveCount++;
@@ -686,7 +742,9 @@ namespace NinjaTrader.NinjaScript.Strategies
                         else if (closedDirection == MarketPosition.Short)
                         {
                             bearAnchor = (highestInTrade > 0) ? highestInTrade : bearRetraceHigh;
+                            bearAnchorBar = CurrentBar;
                             bearExtreme = currentTp;
+                            bearExtremeBar = CurrentBar;
                             activeBias = "BEAR";
                             bearState = 3;
                             bearWaveCount++;

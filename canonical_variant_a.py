@@ -64,7 +64,9 @@ def run_canonical_simulation(df_continuous, contracts=5, ticker="MNQ", max_conse
     day_high = 0.0; day_low = float("inf")
 
     bull_state = 0; bull_anchor = 0.0; bull_extreme = 0.0; bull_lowest_w1 = 0.0; bull_retrace_low = 0.0; bull_stoprun_low = 0.0
+    bull_anchor_bar = 0; bull_extreme_bar = 0; bull_lowest_w1_bar = 0
     bear_state = 0; bear_anchor = 0.0; bear_extreme = 0.0; bear_highest_w1 = 0.0; bear_retrace_high = 0.0; bear_stoprun_high = 0.0
+    bear_anchor_bar = 0; bear_extreme_bar = 0; bear_highest_w1_bar = 0
     bull_wave_traded = False
     bear_wave_traded = False
     bull_wave_count = 1
@@ -110,6 +112,8 @@ def run_canonical_simulation(df_continuous, contracts=5, ticker="MNQ", max_conse
             # Wave 2 begins ONLY after Wave 1 retraces to 50% (State 2) and breaks out past extreme (State 3).
             bull_state = 1; bull_anchor = day_low; bull_extreme = day_low
             bear_state = 1; bear_anchor = day_high; bear_extreme = day_high
+            bull_anchor_bar = i; bull_extreme_bar = i; bull_lowest_w1_bar = i
+            bear_anchor_bar = i; bear_extreme_bar = i; bear_highest_w1_bar = i
             active_bias = None
             bull_wave_count = 1
             bear_wave_count = 1
@@ -160,7 +164,7 @@ def run_canonical_simulation(df_continuous, contracts=5, ticker="MNQ", max_conse
                 trades.append({'wave': current_trade_wave, 'time': times[i], 'points': net_pts, 'profit_usd': usd, 'exit_reason': 'TP'})
                 pos = 0
                 exited_this_bar = True
-                bull_anchor = lowest_in_trade; bull_extreme = tp_price; active_bias = "BULL"; bull_state = 3
+                bull_anchor = lowest_in_trade; bull_anchor_bar = i; bull_extreme = tp_price; bull_extreme_bar = i; active_bias = "BULL"; bull_state = 3
                 bull_wave_count += 1
                 consec_loss_today = 0
             elif low[i] <= sl_price:
@@ -196,7 +200,7 @@ def run_canonical_simulation(df_continuous, contracts=5, ticker="MNQ", max_conse
                 trades.append({'wave': current_trade_wave, 'time': times[i], 'points': net_pts, 'profit_usd': usd, 'exit_reason': 'TP'})
                 pos = 0
                 exited_this_bar = True
-                bear_anchor = highest_in_trade; bear_extreme = tp_price; active_bias = "BEAR"; bear_state = 3
+                bear_anchor = highest_in_trade; bear_anchor_bar = i; bear_extreme = tp_price; bear_extreme_bar = i; active_bias = "BEAR"; bear_state = 3
                 bear_wave_count += 1
                 consec_loss_today = 0
             elif high[i] >= sl_price:
@@ -227,6 +231,7 @@ def run_canonical_simulation(df_continuous, contracts=5, ticker="MNQ", max_conse
         if low[i] < day_low:
             day_low = low[i]
             bull_state = 1; bull_anchor = day_low; bull_extreme = day_low
+            bull_anchor_bar = i; bull_extreme_bar = i; bull_lowest_w1_bar = i
             bull_wave_traded = False
             bull_wave_count = 1
             if active_bias == "BULL": active_bias = None
@@ -234,6 +239,7 @@ def run_canonical_simulation(df_continuous, contracts=5, ticker="MNQ", max_conse
         if high[i] > day_high:
             day_high = high[i]
             bear_state = 1; bear_anchor = day_high; bear_extreme = day_high
+            bear_anchor_bar = i; bear_extreme_bar = i; bear_highest_w1_bar = i
             bear_wave_traded = False
             bear_wave_count = 1
             if active_bias == "BEAR": active_bias = None
@@ -243,17 +249,20 @@ def run_canonical_simulation(df_continuous, contracts=5, ticker="MNQ", max_conse
 
         # 5. Bullish Wave Cycle (Pure Market Structure)
         if bull_state == 1:
-            if high[i] > bull_extreme: bull_extreme = high[i]
+            if high[i] > bull_extreme:
+                bull_extreme = high[i]
+                bull_extreme_bar = i
             bull_50 = bull_extreme - 0.50 * (bull_extreme - bull_anchor)
             if (bull_extreme - bull_anchor) > tick_size and low[i] <= bull_50:
-                bull_state = 2; bull_lowest_w1 = low[i]
+                bull_state = 2; bull_lowest_w1 = low[i]; bull_lowest_w1_bar = i
         elif bull_state == 2:
-            bull_lowest_w1 = min(bull_lowest_w1, low[i])
+            if low[i] < bull_lowest_w1:
+                bull_lowest_w1 = low[i]; bull_lowest_w1_bar = i
             if low[i] < bull_anchor:
                 bull_state = 0
                 if active_bias == "BULL": active_bias = None
             elif high[i] >= bull_extreme:
-                bull_state = 3; bull_anchor = bull_lowest_w1; bull_extreme = high[i]; active_bias = "BULL"
+                bull_state = 3; bull_anchor = bull_lowest_w1; bull_anchor_bar = bull_lowest_w1_bar; bull_extreme = high[i]; bull_extreme_bar = i; active_bias = "BULL"
                 bull_wave_traded = False
                 bull_wave_count = 2
         elif bull_state == 3:
@@ -267,9 +276,11 @@ def run_canonical_simulation(df_continuous, contracts=5, ticker="MNQ", max_conse
             else:
                 if high[i] > bull_extreme:
                     bull_extreme = high[i]
+                    bull_extreme_bar = i
                     bull_wave_traded = False
                 bull_50 = bull_extreme - 0.50 * (bull_extreme - bull_anchor)
-                if (bull_extreme - bull_anchor) > tick_size and low[i] <= bull_50:
+                # MINIMUM 2-CANDLE IMPULSE RULE: A wave must span at least 2 distinct candles (extreme_bar > anchor_bar)
+                if (bull_extreme - bull_anchor) > tick_size and low[i] <= bull_50 and (bull_extreme_bar > bull_anchor_bar):
                     bull_state = 4
                     bull_retrace_low = low[i]
                     trade_range = bull_extreme - bull_anchor
@@ -296,7 +307,9 @@ def run_canonical_simulation(df_continuous, contracts=5, ticker="MNQ", max_conse
             elif high[i] >= bull_extreme:
                 bull_state = 3
                 bull_anchor = bull_retrace_low
+                bull_anchor_bar = i
                 bull_extreme = high[i]
+                bull_extreme_bar = i
                 active_bias = "BULL"
                 bull_wave_traded = False
                 bull_wave_count += 1
@@ -305,24 +318,29 @@ def run_canonical_simulation(df_continuous, contracts=5, ticker="MNQ", max_conse
             if high[i] >= bull_extreme:
                 bull_state = 3
                 bull_anchor = bull_stoprun_low
+                bull_anchor_bar = i
                 bull_extreme = high[i]
+                bull_extreme_bar = i
                 active_bias = "BULL"
                 bull_wave_traded = False
                 bull_wave_count += 1
 
         # 6. Bearish Wave Cycle (Pure Market Structure)
         if bear_state == 1:
-            if low[i] < bear_extreme: bear_extreme = low[i]
+            if low[i] < bear_extreme:
+                bear_extreme = low[i]
+                bear_extreme_bar = i
             bear_50 = bear_extreme + 0.50 * (bear_anchor - bear_extreme)
             if (bear_anchor - bear_extreme) > tick_size and high[i] >= bear_50:
-                bear_state = 2; bear_highest_w1 = high[i]
+                bear_state = 2; bear_highest_w1 = high[i]; bear_highest_w1_bar = i
         elif bear_state == 2:
-            bear_highest_w1 = max(bear_highest_w1, high[i])
+            if high[i] > bear_highest_w1:
+                bear_highest_w1 = high[i]; bear_highest_w1_bar = i
             if high[i] > bear_anchor:
                 bear_state = 0
                 if active_bias == "BEAR": active_bias = None
             elif low[i] <= bear_extreme:
-                bear_state = 3; bear_anchor = bear_highest_w1; bear_extreme = low[i]; active_bias = "BEAR"
+                bear_state = 3; bear_anchor = bear_highest_w1; bear_anchor_bar = bear_highest_w1_bar; bear_extreme = low[i]; bear_extreme_bar = i; active_bias = "BEAR"
                 bear_wave_traded = False
                 bear_wave_count = 2
         elif bear_state == 3:
@@ -336,9 +354,11 @@ def run_canonical_simulation(df_continuous, contracts=5, ticker="MNQ", max_conse
             else:
                 if low[i] < bear_extreme:
                     bear_extreme = low[i]
+                    bear_extreme_bar = i
                     bear_wave_traded = False
                 bear_50 = bear_extreme + 0.50 * (bear_anchor - bear_extreme)
-                if (bear_anchor - bear_extreme) > tick_size and high[i] >= bear_50:
+                # MINIMUM 2-CANDLE IMPULSE RULE: A wave must span at least 2 distinct candles (extreme_bar > anchor_bar)
+                if (bear_anchor - bear_extreme) > tick_size and high[i] >= bear_50 and (bear_extreme_bar > bear_anchor_bar):
                     bear_state = 4
                     bear_retrace_high = high[i]
                     trade_range = bear_anchor - bear_extreme
@@ -365,7 +385,9 @@ def run_canonical_simulation(df_continuous, contracts=5, ticker="MNQ", max_conse
             elif low[i] <= bear_extreme:
                 bear_state = 3
                 bear_anchor = bear_retrace_high
+                bear_anchor_bar = i
                 bear_extreme = low[i]
+                bear_extreme_bar = i
                 active_bias = "BEAR"
                 bear_wave_traded = False
                 bear_wave_count += 1
@@ -374,7 +396,9 @@ def run_canonical_simulation(df_continuous, contracts=5, ticker="MNQ", max_conse
             if low[i] <= bear_extreme:
                 bear_state = 3
                 bear_anchor = bear_stoprun_high
+                bear_anchor_bar = i
                 bear_extreme = low[i]
+                bear_extreme_bar = i
                 active_bias = "BEAR"
                 bear_wave_traded = False
                 bear_wave_count += 1

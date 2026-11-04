@@ -50,6 +50,9 @@ var float bull_extreme      = 0.0
 var float bull_lowest_w1    = 0.0
 var float bull_retrace_low  = 0.0
 var float bull_stoprun_low  = 0.0
+var int   bull_anchor_bar   = 0
+var int   bull_extreme_bar  = 0
+var int   bull_lowest_w1_bar = 0
 var bool  bull_wave_traded  = false
 var int   bull_wave_count   = 1
 
@@ -59,6 +62,9 @@ var float bear_extreme      = 0.0
 var float bear_highest_w1   = 0.0
 var float bear_retrace_high = 0.0
 var float bear_stoprun_high = 0.0
+var int   bear_anchor_bar   = 0
+var int   bear_extreme_bar  = 0
+var int   bear_highest_w1_bar = 0
 var bool  bear_wave_traded  = false
 var int   bear_wave_count   = 1
 var int   current_trade_wave = 0
@@ -129,9 +135,17 @@ if is_rth_open
     bull_state          := 1
     bull_anchor         := day_low
     bull_extreme        := day_low
+    bull_anchor_bar     := bar_index
+    bull_extreme_bar    := bar_index
+    bull_lowest_w1_bar  := bar_index
+
     bear_state          := 1
     bear_anchor         := day_high
     bear_extreme        := day_high
+    bear_anchor_bar     := bar_index
+    bear_extreme_bar    := bar_index
+    bear_highest_w1_bar := bar_index
+
     active_bias         := "NONE"
     bull_wave_count     := 1
     bear_wave_count     := 1
@@ -181,7 +195,9 @@ if pos == 1 and not is_session_close and not is_rth_open
             active_sl_line := na
 
         bull_anchor  := lowest_in_trade
+        bull_anchor_bar := bar_index
         bull_extreme := tp_price
+        bull_extreme_bar := bar_index
         active_bias  := "BULL"
         bull_state   := 3
         bull_wave_count += 1
@@ -239,7 +255,9 @@ else if pos == -1 and not is_session_close and not is_rth_open
             active_sl_line := na
 
         bear_anchor  := highest_in_trade
+        bear_anchor_bar := bar_index
         bear_extreme := tp_price
+        bear_extreme_bar := bar_index
         active_bias  := "BEAR"
         bear_state   := 3
         bear_wave_count += 1
@@ -283,6 +301,9 @@ if low < day_low
     bull_state       := 1
     bull_anchor      := day_low
     bull_extreme     := day_low
+    bull_anchor_bar  := bar_index
+    bull_extreme_bar := bar_index
+    bull_lowest_w1_bar := bar_index
     bull_wave_traded := false
     bull_wave_count  := 1
     if active_bias == "BULL"
@@ -293,6 +314,9 @@ if high > day_high
     bear_state       := 1
     bear_anchor      := day_high
     bear_extreme     := day_high
+    bear_anchor_bar  := bar_index
+    bear_extreme_bar := bar_index
+    bear_highest_w1_bar := bar_index
     bear_wave_traded := false
     bear_wave_count  := 1
     if active_bias == "BEAR"
@@ -306,13 +330,17 @@ if is_window and not is_rth_open
     if bull_state == 1
         if high > bull_extreme
             bull_extreme := high
+            bull_extreme_bar := bar_index
         float bull_50 = bull_extreme - 0.50 * (bull_extreme - bull_anchor)
         if (bull_extreme - bull_anchor) > syminfo.mintick and low <= bull_50
             bull_state := 2
             bull_lowest_w1 := low
+            bull_lowest_w1_bar := bar_index
 
     else if bull_state == 2
-        bull_lowest_w1 := math.min(bull_lowest_w1, low)
+        if low < bull_lowest_w1
+            bull_lowest_w1 := low
+            bull_lowest_w1_bar := bar_index
         if low < bull_anchor
             bull_state := 0
             if active_bias == "BULL"
@@ -320,7 +348,9 @@ if is_window and not is_rth_open
         else if high >= bull_extreme
             bull_state       := 3
             bull_anchor      := bull_lowest_w1
+            bull_anchor_bar  := bull_lowest_w1_bar
             bull_extreme     := high
+            bull_extreme_bar := bar_index
             active_bias      := "BULL"
             bull_wave_traded := false
             bull_wave_count  := 2
@@ -335,9 +365,11 @@ if is_window and not is_rth_open
         else
             if high > bull_extreme
                 bull_extreme     := high
+                bull_extreme_bar := bar_index
                 bull_wave_traded := false
             float bull_50 = bull_extreme - 0.50 * (bull_extreme - bull_anchor)
-            if (bull_extreme - bull_anchor) > syminfo.mintick and low <= bull_50
+            // Canonical Minimum 2-Candle Impulse Rule: (bull_extreme_bar > bull_anchor_bar)
+            if (bull_extreme - bull_anchor) > syminfo.mintick and low <= bull_50 and (bull_extreme_bar > bull_anchor_bar)
                 bull_state := 4
                 bull_retrace_low := low
                 float trade_range = bull_extreme - bull_anchor
@@ -375,7 +407,9 @@ if is_window and not is_rth_open
         else if high >= bull_extreme
             bull_state       := 3
             bull_anchor      := bull_retrace_low
+            bull_anchor_bar  := bar_index
             bull_extreme     := high
+            bull_extreme_bar := bar_index
             active_bias      := "BULL"
             bull_wave_traded := false
             bull_wave_count  += 1
@@ -385,7 +419,9 @@ if is_window and not is_rth_open
         if high >= bull_extreme
             bull_state       := 3
             bull_anchor      := bull_stoprun_low
+            bull_anchor_bar  := bar_index
             bull_extreme     := high
+            bull_extreme_bar := bar_index
             active_bias      := "BULL"
             bull_wave_traded := false
             bull_wave_count  += 1
@@ -394,13 +430,17 @@ if is_window and not is_rth_open
     if bear_state == 1
         if low < bear_extreme
             bear_extreme := low
+            bear_extreme_bar := bar_index
         float bear_50 = bear_extreme + 0.50 * (bear_anchor - bear_extreme)
         if (bear_anchor - bear_extreme) > syminfo.mintick and high >= bear_50
             bear_state := 2
             bear_highest_w1 := high
+            bear_highest_w1_bar := bar_index
 
     else if bear_state == 2
-        bear_highest_w1 := math.max(bear_highest_w1, high)
+        if high > bear_highest_w1
+            bear_highest_w1 := high
+            bear_highest_w1_bar := bar_index
         if high > bear_anchor
             bear_state := 0
             if active_bias == "BEAR"
@@ -408,7 +448,9 @@ if is_window and not is_rth_open
         else if low <= bear_extreme
             bear_state       := 3
             bear_anchor      := bear_highest_w1
+            bear_anchor_bar  := bear_highest_w1_bar
             bear_extreme     := low
+            bear_extreme_bar := bar_index
             active_bias      := "BEAR"
             bear_wave_traded := false
             bear_wave_count  := 2
@@ -423,9 +465,11 @@ if is_window and not is_rth_open
         else
             if low < bear_extreme
                 bear_extreme     := low
+                bear_extreme_bar := bar_index
                 bear_wave_traded := false
             float bear_50 = bear_extreme + 0.50 * (bear_anchor - bear_extreme)
-            if (bear_anchor - bear_extreme) > syminfo.mintick and high >= bear_50
+            // Canonical Minimum 2-Candle Impulse Rule: (bear_extreme_bar > bear_anchor_bar)
+            if (bear_anchor - bear_extreme) > syminfo.mintick and high >= bear_50 and (bear_extreme_bar > bear_anchor_bar)
                 bear_state := 4
                 bear_retrace_high := high
                 float trade_range = bear_anchor - bear_extreme
@@ -463,7 +507,9 @@ if is_window and not is_rth_open
         else if low <= bear_extreme
             bear_state       := 3
             bear_anchor      := bear_retrace_high
+            bear_anchor_bar  := bar_index
             bear_extreme     := low
+            bear_extreme_bar := bar_index
             active_bias      := "BEAR"
             bear_wave_traded := false
             bear_wave_count  += 1
@@ -473,7 +519,9 @@ if is_window and not is_rth_open
         if low <= bear_extreme
             bear_state       := 3
             bear_anchor      := bear_stoprun_high
+            bear_anchor_bar  := bar_index
             bear_extreme     := low
+            bear_extreme_bar := bar_index
             active_bias      := "BEAR"
             bear_wave_traded := false
             bear_wave_count  += 1
